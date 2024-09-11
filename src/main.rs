@@ -8,11 +8,14 @@ use anyhow::{bail, Context};
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use base64::prelude::*;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument};
+use tracing::{error, info};
+use tracing_subscriber::fmt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .event_format(fmt::format().compact())
+        .init();
 
     info!("starting server");
 
@@ -68,7 +71,6 @@ struct PublishInput {
 struct PublishOutput {}
 
 /// Publishes a package to the registry.
-#[instrument]
 async fn publish(
     State(state): State<AppState>,
     Json(input): Json<PublishInput>,
