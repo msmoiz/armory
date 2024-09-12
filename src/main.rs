@@ -71,6 +71,27 @@ pub mod header {
     pub const OK: &'static str = "x-ok";
 }
 
+/// Output response.
+///
+/// Sets the `x-ok` header to `true` and serializes the body to JSON. The output
+/// value must implement `Serialize`.
+struct Output<T>(T);
+
+impl<T> IntoResponse for Output<T>
+where
+    T: Serialize,
+{
+    fn into_response(self) -> Response {
+        let headers = {
+            let mut map = HeaderMap::new();
+            map.insert(header::OK, HeaderValue::from_static("true"));
+            map
+        };
+
+        (headers, Json(self.0)).into_response()
+    }
+}
+
 /// Error body content.
 #[derive(Serialize)]
 struct Error {
@@ -123,7 +144,7 @@ impl IntoResponse for PublishError {
 async fn publish(
     State(state): State<AppState>,
     Json(input): Json<PublishInput>,
-) -> Result<Json<PublishOutput>, PublishError> {
+) -> Result<Output<PublishOutput>, PublishError> {
     info!("handling publish request");
 
     let Ok(content) = BASE64_STANDARD.decode(input.content.as_bytes()) else {
@@ -144,5 +165,5 @@ async fn publish(
 
     info!("published artifact to {}", artifact_path.display());
 
-    Ok(Json(PublishOutput::default()))
+    Ok(Output(PublishOutput::default()))
 }
