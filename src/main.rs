@@ -5,7 +5,13 @@ use std::{
 };
 
 use anyhow::{bail, Context};
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{
+    extract::State,
+    http::{HeaderMap, HeaderValue},
+    response::{IntoResponse, Response},
+    routing::post,
+    Json, Router,
+};
 use base64::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
@@ -58,6 +64,26 @@ struct AppState {
     armory_home: Arc<PathBuf>,
 }
 
+pub mod header {
+    /// Indicates the success or failure of an operation.
+    ///
+    /// Should be set to `true` or `false`.
+    pub const OK: &'static str = "x-ok";
+}
+
+/// Error body content.
+#[derive(Serialize)]
+struct Error {
+    code: &'static str,
+}
+
+impl Error {
+    /// Creates a new error from an error code.
+    fn new(code: &'static str) -> Self {
+        Self { code }
+    }
+}
+
 /// Input for the publish operation.
 #[derive(Deserialize, Debug)]
 struct PublishInput {
@@ -70,15 +96,38 @@ struct PublishInput {
 #[derive(Serialize, Default)]
 struct PublishOutput {}
 
+/// Errors for the publish operation.
+enum PublishError {
+    InvalidEncoding,
+    InternalError,
+}
+
+impl IntoResponse for PublishError {
+    fn into_response(self) -> Response {
+        let code = match self {
+            PublishError::InvalidEncoding => "invalid_encoding",
+            PublishError::InternalError => "internal_error",
+        };
+
+        let headers = {
+            let mut map = HeaderMap::new();
+            map.insert(header::OK, HeaderValue::from_static("false"));
+            map
+        };
+
+        (headers, Json(Error::new(code))).into_response()
+    }
+}
+
 /// Publishes a package to the registry.
 async fn publish(
     State(state): State<AppState>,
     Json(input): Json<PublishInput>,
-) -> Result<Json<PublishOutput>, StatusCode> {
+) -> Result<Json<PublishOutput>, PublishError> {
     info!("handling publish request");
 
     let Ok(content) = BASE64_STANDARD.decode(input.content.as_bytes()) else {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(PublishError::InvalidEncoding);
     };
 
     let artifact_path = state
@@ -90,7 +139,7 @@ async fn publish(
         .with_context(|| format!("failed to write artifact to {}", artifact_path.display()))
     {
         error!("internal failure: {e}");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        return Err(PublishError::InternalError);
     };
 
     info!("published artifact to {}", artifact_path.display());
