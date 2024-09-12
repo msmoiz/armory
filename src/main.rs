@@ -92,16 +92,39 @@ where
     }
 }
 
-/// Error body content.
+/// Error information.
 #[derive(Serialize)]
-struct Error {
+struct ErrorInfo {
     code: &'static str,
 }
 
-impl Error {
-    /// Creates a new error from an error code.
+impl ErrorInfo {
+    /// Creates a new info object.
     fn new(code: &'static str) -> Self {
         Self { code }
+    }
+}
+
+/// Error response.
+///
+/// Sets the `x-ok` header to `false` and serializes the body to JSON. The error
+/// value must implement `Into<ErrorInfo>`.
+struct Error<T>(T);
+
+impl<T> IntoResponse for Error<T>
+where
+    T: Into<ErrorInfo>,
+{
+    fn into_response(self) -> Response {
+        let headers = {
+            let mut map = HeaderMap::new();
+            map.insert(header::OK, HeaderValue::from_static("false"));
+            map
+        };
+
+        let error_info: ErrorInfo = self.0.into();
+
+        (headers, Json(error_info)).into_response()
     }
 }
 
@@ -123,20 +146,14 @@ enum PublishError {
     InternalError,
 }
 
-impl IntoResponse for PublishError {
-    fn into_response(self) -> Response {
-        let code = match self {
+impl From<PublishError> for ErrorInfo {
+    fn from(value: PublishError) -> Self {
+        let code = match value {
             PublishError::InvalidEncoding => "invalid_encoding",
             PublishError::InternalError => "internal_error",
         };
 
-        let headers = {
-            let mut map = HeaderMap::new();
-            map.insert(header::OK, HeaderValue::from_static("false"));
-            map
-        };
-
-        (headers, Json(Error::new(code))).into_response()
+        ErrorInfo::new(code)
     }
 }
 
@@ -144,11 +161,11 @@ impl IntoResponse for PublishError {
 async fn publish(
     State(state): State<AppState>,
     Json(input): Json<PublishInput>,
-) -> Result<Output<PublishOutput>, PublishError> {
+) -> Result<Output<PublishOutput>, Error<PublishError>> {
     info!("handling publish request");
 
     let Ok(content) = BASE64_STANDARD.decode(input.content.as_bytes()) else {
-        return Err(PublishError::InvalidEncoding);
+        return Err(Error(PublishError::InvalidEncoding));
     };
 
     let artifact_path = state
@@ -160,7 +177,7 @@ async fn publish(
         .with_context(|| format!("failed to write artifact to {}", artifact_path.display()))
     {
         error!("internal failure: {e}");
-        return Err(PublishError::InternalError);
+        return Err(Error(PublishError::InternalError));
     };
 
     info!("published artifact to {}", artifact_path.display());
