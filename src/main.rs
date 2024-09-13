@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/publish", post(publish))
+        .route("/get", post(get))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
@@ -183,4 +184,52 @@ async fn publish(
     info!("published artifact to {}", artifact_path.display());
 
     Ok(Output(PublishOutput::default()))
+}
+
+/// Input for the get operation.
+#[derive(Deserialize, Debug)]
+struct GetInput {
+    name: String,
+    version: String,
+}
+
+/// Output for the get operation.
+#[derive(Serialize)]
+struct GetOutput {
+    content: String,
+}
+
+/// Errors for the get operation.
+enum GetError {
+    PackageNotFound,
+}
+
+impl From<GetError> for ErrorInfo {
+    fn from(value: GetError) -> Self {
+        let code = match value {
+            GetError::PackageNotFound => "package_not_found",
+        };
+
+        ErrorInfo::new(code)
+    }
+}
+
+async fn get(
+    State(state): State<AppState>,
+    Json(input): Json<GetInput>,
+) -> Result<Output<GetOutput>, Error<GetError>> {
+    info!("handling get request");
+
+    let artifact_path = state
+        .armory_home
+        .join("registry")
+        .join(format!("{}-{}", input.name, input.version));
+
+    let Ok(content) = fs::read_to_string(&artifact_path) else {
+        return Err(Error(GetError::PackageNotFound));
+    };
+
+    let encoded = BASE64_STANDARD.encode(content);
+
+    Ok(Output(GetOutput { content: encoded }))
 }
