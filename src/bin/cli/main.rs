@@ -1,6 +1,7 @@
 use std::{
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
+    path::PathBuf,
     str::FromStr,
 };
 
@@ -23,6 +24,15 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Upload a package.
+    Publish {
+        /// The name of the package.
+        name: String,
+        /// The version of the package.
+        version: String,
+        /// The path to the package binary to upload.
+        binary: PathBuf,
+    },
     /// Install a package.
     Install {
         /// The name of the package.
@@ -47,6 +57,11 @@ fn main() {
     };
 
     let result = match command {
+        Command::Publish {
+            name,
+            version,
+            binary,
+        } => publish(name, version, binary, config),
         Command::Install { name, version } => install(name, version, config),
         Command::List => list(config),
     };
@@ -116,6 +131,94 @@ pub mod header {
 #[derive(Serialize, Deserialize, Debug)]
 struct ErrorInfo {
     code: String,
+}
+
+/// Input for the publish operation.
+#[derive(Serialize, Deserialize, Debug)]
+struct PublishInput {
+    name: String,
+    version: String,
+    content: String,
+}
+
+/// Output for the publish operation.
+#[derive(Serialize, Deserialize, Default)]
+struct PublishOutput {}
+
+/// Errors for the publish operation.
+enum PublishError {
+    InvalidEncoding,
+    InternalError,
+}
+
+impl FromStr for PublishError {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "invalid_encoding" => Ok(Self::InvalidEncoding),
+            "internal_error" => Ok(Self::InternalError),
+            _ => bail!("unsupported value: {s}"),
+        }
+    }
+}
+
+/// Publish a package.
+fn publish(name: String, version: String, binary: PathBuf, config: Config) -> anyhow::Result<()> {
+    let client = Client::new();
+
+    if !binary.is_file() {
+        bail!("{binary:?} is not a file");
+    }
+
+    let content = {
+        let bytes = fs::read(binary).context("failed to read binary file")?;
+        let encoded = BASE64_STANDARD.encode(bytes);
+        encoded
+    };
+
+    let input = PublishInput {
+        name: name.clone(),
+        version: version.clone(),
+        content,
+    };
+
+    let base_url = config.registry_url;
+
+    let response = client
+        .post(format!("{base_url}/publish"))
+        .json(&input)
+        .send()
+        .context("failed to send 'publish' request")?;
+
+    let ok = {
+        let header = response.headers().get(header::OK).map(|v| v.to_str());
+        match header {
+            None => bail!("'ok' header is missing"),
+            Some(Err(_)) => bail!("'ok' header is malformed"),
+            Some(Ok(str)) => str == "true",
+        }
+    };
+
+    if !ok {
+        let error_info = response
+            .json::<ErrorInfo>()
+            .context("error message is malformed")?;
+
+        let error = error_info
+            .code
+            .parse::<PublishError>()
+            .context("failed to parse error code")?;
+
+        match error {
+            PublishError::InvalidEncoding => bail!("invalid encoding"),
+            PublishError::InternalError => bail!("registry error"),
+        }
+    }
+
+    info!("published {name}-{version}");
+
+    Ok(())
 }
 
 /// Input for the get operation.
