@@ -97,7 +97,7 @@ impl Config {
             #[cfg(debug_assertions)]
             registry_url: String::from("http://localhost:3000"),
             #[cfg(not(debug_assertions))]
-            registry_url: String::from("https://msmoiz.armory.com:3000"),
+            registry_url: String::from("https://msmoiz.armory.com"),
         }
     }
 }
