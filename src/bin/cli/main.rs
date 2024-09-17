@@ -37,13 +37,15 @@ fn main() {
 
     let cli = Cli::parse();
 
+    let config = Config::load();
+
     let Some(command) = cli.command else {
         Cli::command().print_help().unwrap();
         std::process::exit(1);
     };
 
     let result = match command {
-        Command::Install { name, version } => install(name, version),
+        Command::Install { name, version } => install(name, version, config),
     };
 
     if let Err(e) = result {
@@ -80,6 +82,24 @@ fn init_logger() {
         .format(format)
         .filter_level(log::LevelFilter::Info)
         .init();
+}
+
+/// Application config.
+struct Config {
+    /// The URL of the registry.
+    registry_url: String,
+}
+
+impl Config {
+    /// Loads config from the environment.
+    fn load() -> Self {
+        Self {
+            #[cfg(debug_assertions)]
+            registry_url: String::from("http://localhost:3000"),
+            #[cfg(not(debug_assertions))]
+            registry_url: String::from("https://msmoiz.armory.com:3000"),
+        }
+    }
 }
 
 pub mod header {
@@ -124,7 +144,7 @@ impl FromStr for GetError {
     }
 }
 
-fn install(name: String, version: String) -> anyhow::Result<()> {
+fn install(name: String, version: String, config: Config) -> anyhow::Result<()> {
     let client = Client::new();
 
     let input = GetInput {
@@ -132,8 +152,10 @@ fn install(name: String, version: String) -> anyhow::Result<()> {
         version: version.clone(),
     };
 
+    let base_url = config.registry_url;
+
     let response = client
-        .post("http://localhost:3000/get")
+        .post(format!("{base_url}/get"))
         .json(&input)
         .send()
         .context("failed to send 'get' request")?;
