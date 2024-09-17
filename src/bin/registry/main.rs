@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -40,6 +41,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/publish", post(publish))
         .route("/get", post(get))
+        .route("/list", post(list))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
@@ -232,4 +234,70 @@ async fn get(
     let encoded = BASE64_STANDARD.encode(content);
 
     Ok(Output(GetOutput { content: encoded }))
+}
+
+/// Input for the list operation.
+#[derive(Deserialize, Debug)]
+struct ListInput {}
+
+/// Output for the list operation.
+#[derive(Serialize)]
+struct ListOutput {
+    packages: Vec<String>,
+}
+
+/// Errors for the list operation.
+enum ListError {
+    InternalError,
+}
+
+impl From<ListError> for ErrorInfo {
+    fn from(value: ListError) -> Self {
+        let code = match value {
+            ListError::InternalError => "internal_error",
+        };
+
+        ErrorInfo::new(code)
+    }
+}
+
+async fn list(
+    State(state): State<AppState>,
+    Json(_): Json<ListInput>,
+) -> Result<Output<ListOutput>, Error<ListError>> {
+    info!("handling list request");
+
+    let registry = state.armory_home.join("registry");
+
+    let entries = match fs::read_dir(registry).context("failed to read registry") {
+        Ok(entries) => entries,
+        Err(e) => {
+            error!("internal failure: {e}");
+            return Err(Error(ListError::InternalError));
+        }
+    };
+
+    let mut packages = HashSet::<String>::new();
+    for entry in entries {
+        let entry = match entry.context("failed to read registry entry") {
+            Ok(entry) => entry,
+            Err(e) => {
+                error!("internal failure: {e}");
+                return Err(Error(ListError::InternalError));
+            }
+        };
+
+        let path = entry.path();
+        if path.is_file() {
+            let name = path.file_name().expect("path should point to a file");
+            let name = name.to_str().expect("name should be valid unicode");
+            let mut parts: Vec<_> = name.split('-').collect();
+            parts.pop(); // discard the version
+            packages.insert(parts.join("-"));
+        }
+    }
+
+    Ok(Output(ListOutput {
+        packages: packages.into_iter().collect(),
+    }))
 }
