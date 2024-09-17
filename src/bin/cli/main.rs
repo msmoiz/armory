@@ -30,6 +30,8 @@ enum Command {
         /// The version of the package.
         version: String,
     },
+    /// List available packages.
+    List,
 }
 
 fn main() {
@@ -46,6 +48,7 @@ fn main() {
 
     let result = match command {
         Command::Install { name, version } => install(name, version, config),
+        Command::List => list(config),
     };
 
     if let Err(e) = result {
@@ -144,6 +147,7 @@ impl FromStr for GetError {
     }
 }
 
+/// Install a package.
 fn install(name: String, version: String, config: Config) -> anyhow::Result<()> {
     let client = Client::new();
 
@@ -211,6 +215,81 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
         .context("failed to set binary permissions")?;
 
     info!("installed binary to {}", artifact_path.display());
+
+    Ok(())
+}
+
+/// Input for the list operation.
+#[derive(Serialize, Deserialize, Debug)]
+struct ListInput {}
+
+/// Output for the list operation.
+#[derive(Serialize, Deserialize, Debug)]
+struct ListOutput {
+    packages: Vec<String>,
+}
+
+/// Errors for the list operation.
+enum ListError {
+    InternalError,
+}
+
+impl FromStr for ListError {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "internal_error" => Ok(Self::InternalError),
+            _ => bail!("unsupported value: {s}"),
+        }
+    }
+}
+
+/// List available packages.
+fn list(config: Config) -> anyhow::Result<()> {
+    let client = Client::new();
+
+    let input = ListInput {};
+
+    let base_url = config.registry_url;
+
+    let response = client
+        .post(format!("{base_url}/list"))
+        .json(&input)
+        .send()
+        .context("failed to send 'list' request")?;
+
+    let ok = {
+        let header = response.headers().get(header::OK).map(|v| v.to_str());
+        match header {
+            None => bail!("'ok' header is missing"),
+            Some(Err(_)) => bail!("'ok' header is malformed"),
+            Some(Ok(str)) => str == "true",
+        }
+    };
+
+    if !ok {
+        let error_info = response
+            .json::<ErrorInfo>()
+            .context("error message is malformed")?;
+
+        let error = error_info
+            .code
+            .parse::<ListError>()
+            .context("failed to parse error code")?;
+
+        match error {
+            ListError::InternalError => bail!("registry error"),
+        }
+    }
+
+    let output = response
+        .json::<ListOutput>()
+        .context("list response is malformed")?;
+
+    for package in output.packages {
+        println!("    {package}")
+    }
 
     Ok(())
 }
