@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{bail, Context};
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::{HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
     routing::post,
@@ -42,7 +42,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/publish", post(publish))
         .route("/get", post(get))
         .route("/list", post(list))
-        .with_state(state);
+        .with_state(state)
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 100));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
