@@ -228,13 +228,13 @@ async fn get(
         .join("registry")
         .join(format!("{}-{}", input.name, input.version));
 
-    let Ok(content) = fs::read_to_string(&artifact_path) else {
+    let Ok(bytes) = fs::read(&artifact_path) else {
         return Err(Error(GetError::PackageNotFound));
     };
 
-    let encoded = BASE64_STANDARD.encode(content);
+    let content = BASE64_STANDARD.encode(bytes);
 
-    Ok(Output(GetOutput { content: encoded }))
+    Ok(Output(GetOutput { content }))
 }
 
 /// Input for the list operation.
