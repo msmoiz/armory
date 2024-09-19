@@ -92,6 +92,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "log",
+ "model",
  "reqwest",
  "serde",
 ]
@@ -104,6 +105,7 @@ dependencies = [
  "axum",
  "base64",
  "dirs",
+ "model",
  "serde",
  "tokio",
  "tracing",
@@ -675,6 +677,14 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
 ]
 
 [[package]]

@@ -2,7 +2,6 @@ use std::{
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
-    str::FromStr,
 };
 
 use anyhow::{bail, Context};
@@ -11,8 +10,11 @@ use clap::{command, CommandFactory, Parser, Subcommand};
 use colored::{Color, Colorize};
 use env_logger::fmt::Formatter;
 use log::{error, info};
+use model::{
+    ErrorInfo, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput, PublishError,
+    PublishInput,
+};
 use reqwest::blocking::Client;
-use serde::{Deserialize, Serialize};
 use std::io::Write;
 
 #[derive(Parser, Debug)]
@@ -127,42 +129,6 @@ pub mod header {
     pub const OK: &'static str = "x-ok";
 }
 
-/// Error information.
-#[derive(Serialize, Deserialize, Debug)]
-struct ErrorInfo {
-    code: String,
-}
-
-/// Input for the publish operation.
-#[derive(Serialize, Deserialize, Debug)]
-struct PublishInput {
-    name: String,
-    version: String,
-    content: String,
-}
-
-/// Output for the publish operation.
-#[derive(Serialize, Deserialize, Default)]
-struct PublishOutput {}
-
-/// Errors for the publish operation.
-enum PublishError {
-    InvalidEncoding,
-    InternalError,
-}
-
-impl FromStr for PublishError {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "invalid_encoding" => Ok(Self::InvalidEncoding),
-            "internal_error" => Ok(Self::InternalError),
-            _ => bail!("unsupported value: {s}"),
-        }
-    }
-}
-
 /// Publish a package.
 fn publish(name: String, version: String, binary: PathBuf, config: Config) -> anyhow::Result<()> {
     let client = Client::new();
@@ -205,9 +171,8 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
             .json::<ErrorInfo>()
             .context("error message is malformed")?;
 
-        let error = error_info
-            .code
-            .parse::<PublishError>()
+        let error: PublishError = error_info
+            .try_into()
             .context("failed to parse error code")?;
 
         match error {
@@ -219,35 +184,6 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
     info!("published {name}-{version}");
 
     Ok(())
-}
-
-/// Input for the get operation.
-#[derive(Serialize, Deserialize, Debug)]
-struct GetInput {
-    name: String,
-    version: String,
-}
-
-/// Output for the get operation.
-#[derive(Serialize, Deserialize, Debug)]
-struct GetOutput {
-    content: String,
-}
-
-/// Errors for the get operation.
-enum GetError {
-    PackageNotFound,
-}
-
-impl FromStr for GetError {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "package_not_found" => Ok(Self::PackageNotFound),
-            _ => bail!("unsupported value: {s}"),
-        }
-    }
 }
 
 /// Install a package.
@@ -281,9 +217,8 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
             .json::<ErrorInfo>()
             .context("error message is malformed")?;
 
-        let error = error_info
-            .code
-            .parse::<GetError>()
+        let error: GetError = error_info
+            .try_into()
             .context("failed to parse error code")?;
 
         match error {
@@ -322,32 +257,6 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
     Ok(())
 }
 
-/// Input for the list operation.
-#[derive(Serialize, Deserialize, Debug)]
-struct ListInput {}
-
-/// Output for the list operation.
-#[derive(Serialize, Deserialize, Debug)]
-struct ListOutput {
-    packages: Vec<String>,
-}
-
-/// Errors for the list operation.
-enum ListError {
-    InternalError,
-}
-
-impl FromStr for ListError {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "internal_error" => Ok(Self::InternalError),
-            _ => bail!("unsupported value: {s}"),
-        }
-    }
-}
-
 /// List available packages.
 fn list(config: Config) -> anyhow::Result<()> {
     let client = Client::new();
@@ -376,9 +285,8 @@ fn list(config: Config) -> anyhow::Result<()> {
             .json::<ErrorInfo>()
             .context("error message is malformed")?;
 
-        let error = error_info
-            .code
-            .parse::<ListError>()
+        let error: ListError = error_info
+            .try_into()
             .context("failed to parse error code")?;
 
         match error {

@@ -14,7 +14,11 @@ use axum::{
     Json, Router,
 };
 use base64::prelude::*;
-use serde::{Deserialize, Serialize};
+use model::{
+    ErrorInfo, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput, PublishError,
+    PublishInput, PublishOutput,
+};
+use serde::Serialize;
 use tracing::{error, info};
 use tracing_subscriber::fmt;
 
@@ -96,19 +100,6 @@ where
     }
 }
 
-/// Error information.
-#[derive(Serialize)]
-struct ErrorInfo {
-    code: &'static str,
-}
-
-impl ErrorInfo {
-    /// Creates a new info object.
-    fn new(code: &'static str) -> Self {
-        Self { code }
-    }
-}
-
 /// Error response.
 ///
 /// Sets the `x-ok` header to `false` and serializes the body to JSON. The error
@@ -129,35 +120,6 @@ where
         let error_info: ErrorInfo = self.0.into();
 
         (headers, Json(error_info)).into_response()
-    }
-}
-
-/// Input for the publish operation.
-#[derive(Deserialize, Debug)]
-struct PublishInput {
-    name: String,
-    version: String,
-    content: String,
-}
-
-/// Output for the publish operation.
-#[derive(Serialize, Default)]
-struct PublishOutput {}
-
-/// Errors for the publish operation.
-enum PublishError {
-    InvalidEncoding,
-    InternalError,
-}
-
-impl From<PublishError> for ErrorInfo {
-    fn from(value: PublishError) -> Self {
-        let code = match value {
-            PublishError::InvalidEncoding => "invalid_encoding",
-            PublishError::InternalError => "internal_error",
-        };
-
-        ErrorInfo::new(code)
     }
 }
 
@@ -186,35 +148,7 @@ async fn publish(
 
     info!("published artifact to {}", artifact_path.display());
 
-    Ok(Output(PublishOutput::default()))
-}
-
-/// Input for the get operation.
-#[derive(Deserialize, Debug)]
-struct GetInput {
-    name: String,
-    version: String,
-}
-
-/// Output for the get operation.
-#[derive(Serialize)]
-struct GetOutput {
-    content: String,
-}
-
-/// Errors for the get operation.
-enum GetError {
-    PackageNotFound,
-}
-
-impl From<GetError> for ErrorInfo {
-    fn from(value: GetError) -> Self {
-        let code = match value {
-            GetError::PackageNotFound => "package_not_found",
-        };
-
-        ErrorInfo::new(code)
-    }
+    Ok(Output(PublishOutput {}))
 }
 
 async fn get(
@@ -235,31 +169,6 @@ async fn get(
     let content = BASE64_STANDARD.encode(bytes);
 
     Ok(Output(GetOutput { content }))
-}
-
-/// Input for the list operation.
-#[derive(Deserialize, Debug)]
-struct ListInput {}
-
-/// Output for the list operation.
-#[derive(Serialize)]
-struct ListOutput {
-    packages: Vec<String>,
-}
-
-/// Errors for the list operation.
-enum ListError {
-    InternalError,
-}
-
-impl From<ListError> for ErrorInfo {
-    fn from(value: ListError) -> Self {
-        let code = match value {
-            ListError::InternalError => "internal_error",
-        };
-
-        ErrorInfo::new(code)
-    }
 }
 
 async fn list(
