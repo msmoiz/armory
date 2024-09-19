@@ -181,6 +181,10 @@ fn install(name: String, version: Option<String>, config: Config) -> anyhow::Res
     let bin = armory_home.join("bin");
     fs::create_dir_all(&bin).context("failed to create bin directory")?;
     let artifact_path = bin.join(&format!("{}", output.name));
+    if artifact_path.exists() {
+        fs::remove_file(&artifact_path).context("failed to remove existing package")?;
+        info!("deleted existing binary at {}", artifact_path.display());
+    }
     fs::write(&artifact_path, &content).context("failed to store package in bin")?;
     fs::set_permissions(&artifact_path, Permissions::from_mode(0o700))
         .context("failed to set binary permissions")?;
