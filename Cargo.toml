@@ -1,17 +1,11 @@
-[package]
-name = "armory"
-version = "0.1.0"
+[workspace]
+members = ["cli", "registry"]
+resolver = "2"
+
+[workspace.package]
 edition = "2021"
 
-[[bin]]
-name = "armory"
-path = "./src/bin/cli/main.rs"
-
-[[bin]]
-name = "armory-registry"
-path = "./src/bin/registry/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.87"
 axum = "0.7.5"
 base64 = "0.22.1"
@@ -28,4 +22,3 @@ reqwest = { version = "0.12.7", default-features = false, features = [
 serde = { version = "1.0.210", features = ["derive"] }
 tokio = { version = "1.40.0", features = ["full"] }
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
