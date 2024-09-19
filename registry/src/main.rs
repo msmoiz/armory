@@ -157,10 +157,38 @@ async fn get(
 ) -> Result<Output<GetOutput>, Error<GetError>> {
     info!("handling get request");
 
-    let artifact_path = state
-        .armory_home
-        .join("registry")
-        .join(format!("{}-{}", input.name, input.version));
+    let registry = state.armory_home.join("registry");
+
+    let version = match input.version {
+        Some(version) => version,
+        None => {
+            let entries = match fs::read_dir(&registry).context("failed to read registry") {
+                Ok(entries) => entries,
+                Err(e) => {
+                    error!("internal failure: {e}");
+                    return Err(Error(GetError::InternalError));
+                }
+            };
+
+            let version = entries
+                .filter_map(Result::ok)
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|e| {
+                    let mut parts = e.split('-').collect::<Vec<_>>();
+                    parts.pop(); // discard version
+                    parts.join("-") == input.name
+                })
+                .max_by(|x, y| x.split("-").last().cmp(&y.split("-").last()))
+                .map(|e| e.split("-").last().unwrap().to_owned());
+
+            match version {
+                Some(version) => version,
+                None => return Err(Error(GetError::PackageNotFound)),
+            }
+        }
+    };
+
+    let artifact_path = registry.join(format!("{}-{version}", input.name));
 
     let Ok(bytes) = fs::read(&artifact_path) else {
         return Err(Error(GetError::PackageNotFound));
@@ -168,7 +196,11 @@ async fn get(
 
     let content = BASE64_STANDARD.encode(bytes);
 
-    Ok(Output(GetOutput { content }))
+    Ok(Output(GetOutput {
+        name: input.name,
+        version,
+        content,
+    }))
 }
 
 async fn list(

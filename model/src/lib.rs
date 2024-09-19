@@ -59,12 +59,14 @@ impl TryFrom<ErrorInfo> for PublishError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetInput {
     pub name: String,
-    pub version: String,
+    pub version: Option<String>,
 }
 
 /// Output for the get operation.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetOutput {
+    pub name: String,
+    pub version: String,
     pub content: String,
 }
 
@@ -73,12 +75,15 @@ pub struct GetOutput {
 pub enum GetError {
     #[error("package does not exist")]
     PackageNotFound,
+    #[error("internal error")]
+    InternalError,
 }
 
 impl From<GetError> for ErrorInfo {
     fn from(value: GetError) -> Self {
         let code = match value {
             GetError::PackageNotFound => "package_not_found",
+            GetError::InternalError => "internal_error",
         };
 
         ErrorInfo {
@@ -94,6 +99,7 @@ impl TryFrom<ErrorInfo> for GetError {
         let code = value.code.as_ref();
         match code {
             "package_not_found" => Ok(Self::PackageNotFound),
+            "internal_error" => Ok(Self::InternalError),
             _ => bail!("unrecognized error code: {code}"),
         }
     }

@@ -9,6 +9,7 @@ use std::{
 use anyhow::{bail, Context};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use clap::{command, CommandFactory, Parser, Subcommand};
+use client::Client;
 use colored::{Color, Colorize};
 use env_logger::fmt::Formatter;
 use log::{error, info};
@@ -38,7 +39,10 @@ enum Command {
         /// The name of the package.
         name: String,
         /// The version of the package.
-        version: String,
+        ///
+        /// If not specified, the latest version of the package is installed.
+        #[arg(long)]
+        version: Option<String>,
     },
     /// List available packages.
     List,
@@ -145,7 +149,7 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
         content,
     };
 
-    let client = client::Client::new(config.registry_url);
+    let client = Client::new(config.registry_url);
     client.publish(input).context("'publish' request failed")?;
     info!("published {name}-{version}");
 
@@ -153,13 +157,10 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
 }
 
 /// Install a package.
-fn install(name: String, version: String, config: Config) -> anyhow::Result<()> {
-    let input = GetInput {
-        name: name.clone(),
-        version: version.clone(),
-    };
+fn install(name: String, version: Option<String>, config: Config) -> anyhow::Result<()> {
+    let input = GetInput { name, version };
 
-    let client = client::Client::new(config.registry_url);
+    let client = Client::new(config.registry_url);
     let output = client.get(input).context("'get' request failed")?;
 
     let content = BASE64_STANDARD
@@ -172,14 +173,14 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
 
     let registry = armory_home.join("registry");
     fs::create_dir_all(&registry).context("failed to create registry directory")?;
-    let artifact_path = registry.join(&format!("{name}-{version}"));
+    let artifact_path = registry.join(&format!("{}-{}", output.name, output.version));
     fs::write(&artifact_path, &content).context("failed to store package in registry")?;
 
     info!("installed package to {}", artifact_path.display());
 
     let bin = armory_home.join("bin");
     fs::create_dir_all(&bin).context("failed to create bin directory")?;
-    let artifact_path = bin.join(&format!("{name}"));
+    let artifact_path = bin.join(&format!("{}", output.name));
     fs::write(&artifact_path, &content).context("failed to store package in bin")?;
     fs::set_permissions(&artifact_path, Permissions::from_mode(0o700))
         .context("failed to set binary permissions")?;
@@ -192,7 +193,7 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
 /// List available packages.
 fn list(config: Config) -> anyhow::Result<()> {
     let input = ListInput {};
-    let client = client::Client::new(config.registry_url);
+    let client = Client::new(config.registry_url);
     let output = client.list(input).context("'list' request failed")?;
     for package in output.packages {
         println!("    {package}")

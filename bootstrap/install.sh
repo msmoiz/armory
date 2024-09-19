@@ -17,7 +17,7 @@ info "downloaded armory"
 chmod +x "${armory_bin}"
 
 info "installing latest version"
-./"${armory_bin}" install armory 0.1.0 2>&1 | sed 's/^/armory: /'
+./"${armory_bin}" install armory 2>&1 | sed 's/^/armory: /'
 
 info "cleaning up"
 rm ${armory_bin}
