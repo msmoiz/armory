@@ -20,6 +20,7 @@ pub struct PublishInput {
 pub struct PublishOutput {}
 
 /// Errors for the publish operation.
+#[derive(Debug)]
 pub enum PublishError {
     InvalidEncoding,
     InternalError,
@@ -65,6 +66,7 @@ pub struct GetOutput {
 }
 
 /// Errors for the get operation.
+#[derive(Debug)]
 pub enum GetError {
     PackageNotFound,
 }
@@ -104,6 +106,7 @@ pub struct ListOutput {
 }
 
 /// Errors for the list operation.
+#[derive(Debug)]
 pub enum ListError {
     InternalError,
 }

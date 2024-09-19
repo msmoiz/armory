@@ -1,3 +1,5 @@
+mod client;
+
 use std::{
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
@@ -10,11 +12,7 @@ use clap::{command, CommandFactory, Parser, Subcommand};
 use colored::{Color, Colorize};
 use env_logger::fmt::Formatter;
 use log::{error, info};
-use model::{
-    ErrorInfo, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput, PublishError,
-    PublishInput,
-};
-use reqwest::blocking::Client;
+use model::{GetInput, ListInput, PublishInput};
 use std::io::Write;
 
 #[derive(Parser, Debug)]
@@ -131,8 +129,6 @@ pub mod header {
 
 /// Publish a package.
 fn publish(name: String, version: String, binary: PathBuf, config: Config) -> anyhow::Result<()> {
-    let client = Client::new();
-
     if !binary.is_file() {
         bail!("{binary:?} is not a file");
     }
@@ -149,38 +145,8 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
         content,
     };
 
-    let base_url = config.registry_url;
-
-    let response = client
-        .post(format!("{base_url}/publish"))
-        .json(&input)
-        .send()
-        .context("failed to send 'publish' request")?;
-
-    let ok = {
-        let header = response.headers().get(header::OK).map(|v| v.to_str());
-        match header {
-            None => bail!("'ok' header is missing"),
-            Some(Err(_)) => bail!("'ok' header is malformed"),
-            Some(Ok(str)) => str == "true",
-        }
-    };
-
-    if !ok {
-        let error_info = response
-            .json::<ErrorInfo>()
-            .context("error message is malformed")?;
-
-        let error: PublishError = error_info
-            .try_into()
-            .context("failed to parse error code")?;
-
-        match error {
-            PublishError::InvalidEncoding => bail!("invalid encoding"),
-            PublishError::InternalError => bail!("registry error"),
-        }
-    }
-
+    let client = client::Client::new(config.registry_url);
+    client.publish(input).context("'publish' request failed")?;
     info!("published {name}-{version}");
 
     Ok(())
@@ -188,47 +154,13 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
 
 /// Install a package.
 fn install(name: String, version: String, config: Config) -> anyhow::Result<()> {
-    let client = Client::new();
-
     let input = GetInput {
         name: name.clone(),
         version: version.clone(),
     };
 
-    let base_url = config.registry_url;
-
-    let response = client
-        .post(format!("{base_url}/get"))
-        .json(&input)
-        .send()
-        .context("failed to send 'get' request")?;
-
-    let ok = {
-        let header = response.headers().get(header::OK).map(|v| v.to_str());
-        match header {
-            None => bail!("'ok' header is missing"),
-            Some(Err(_)) => bail!("'ok' header is malformed"),
-            Some(Ok(str)) => str == "true",
-        }
-    };
-
-    if !ok {
-        let error_info = response
-            .json::<ErrorInfo>()
-            .context("error message is malformed")?;
-
-        let error: GetError = error_info
-            .try_into()
-            .context("failed to parse error code")?;
-
-        match error {
-            GetError::PackageNotFound => bail!("package does not exist"),
-        }
-    }
-
-    let output = response
-        .json::<GetOutput>()
-        .context("get response is malformed")?;
+    let client = client::Client::new(config.registry_url);
+    let output = client.get(input).context("'get' request failed")?;
 
     let content = BASE64_STANDARD
         .decode(output.content)
@@ -259,48 +191,11 @@ fn install(name: String, version: String, config: Config) -> anyhow::Result<()> 
 
 /// List available packages.
 fn list(config: Config) -> anyhow::Result<()> {
-    let client = Client::new();
-
     let input = ListInput {};
-
-    let base_url = config.registry_url;
-
-    let response = client
-        .post(format!("{base_url}/list"))
-        .json(&input)
-        .send()
-        .context("failed to send 'list' request")?;
-
-    let ok = {
-        let header = response.headers().get(header::OK).map(|v| v.to_str());
-        match header {
-            None => bail!("'ok' header is missing"),
-            Some(Err(_)) => bail!("'ok' header is malformed"),
-            Some(Ok(str)) => str == "true",
-        }
-    };
-
-    if !ok {
-        let error_info = response
-            .json::<ErrorInfo>()
-            .context("error message is malformed")?;
-
-        let error: ListError = error_info
-            .try_into()
-            .context("failed to parse error code")?;
-
-        match error {
-            ListError::InternalError => bail!("registry error"),
-        }
-    }
-
-    let output = response
-        .json::<ListOutput>()
-        .context("list response is malformed")?;
-
+    let client = client::Client::new(config.registry_url);
+    let output = client.list(input).context("'list' request failed")?;
     for package in output.packages {
         println!("    {package}")
     }
-
     Ok(())
 }

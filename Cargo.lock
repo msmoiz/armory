@@ -95,6 +95,7 @@ dependencies = [
  "model",
  "reqwest",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
