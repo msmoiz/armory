@@ -1,5 +1,6 @@
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Error information.
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,9 +21,11 @@ pub struct PublishInput {
 pub struct PublishOutput {}
 
 /// Errors for the publish operation.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum PublishError {
+    #[error("content is not encoded correctly")]
     InvalidEncoding,
+    #[error("internal error")]
     InternalError,
 }
 
@@ -66,8 +69,9 @@ pub struct GetOutput {
 }
 
 /// Errors for the get operation.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum GetError {
+    #[error("package does not exist")]
     PackageNotFound,
 }
 
@@ -106,8 +110,9 @@ pub struct ListOutput {
 }
 
 /// Errors for the list operation.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ListError {
+    #[error("internal error")]
     InternalError,
 }
 

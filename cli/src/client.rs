@@ -22,14 +22,14 @@ pub enum Error<T> {
     /// This covers all errors that might arise during transmission of the
     /// request such as issues with the input/output format, inability to reach
     /// the server, missing headers, and so forth.
-    #[error("transport error")]
+    #[error("transport error: {0:?}")]
     Transport(anyhow::Error),
     /// A semantic error.
     ///
     /// This covers substantive errors returned by the server and is only
     /// returned when the request successfully reaches the server and a response
     /// is returned.
-    #[error("semantic error")]
+    #[error("{0}")]
     Semantic(T),
 }
 
