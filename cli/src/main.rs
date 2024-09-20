@@ -9,9 +9,10 @@ use std::{
 
 use anyhow::{bail, Context};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use clap::{command, CommandFactory, Parser, Subcommand};
+use clap::{command, ArgAction, CommandFactory, Parser, Subcommand};
 use client::Client;
 use colored::{Color, Colorize};
+use dialoguer::Confirm;
 use env_logger::fmt::Formatter;
 use log::{error, info};
 use model::{GetInput, ListInput, PublishInput};
@@ -58,7 +59,13 @@ enum Command {
     /// Uninstall a package.
     Uninstall {
         /// The name of the package.
+        ///
+        /// If the name is "self" or "armory", this command will uninstall
+        /// armory itself along with its associated metadata.
         name: String,
+        /// Do not prompt for input.
+        #[arg(long = "non-interactive",  default_value_t = true, action = ArgAction::SetFalse)]
+        interactive: bool,
     },
 }
 
@@ -107,7 +114,7 @@ fn main() {
         } => publish(name, version, binary, config),
         Command::Install { id, version } => install(id, version, config),
         Command::List { installed } => list(config, installed),
-        Command::Uninstall { name } => uninstall(name),
+        Command::Uninstall { name, interactive } => uninstall(name, interactive),
     };
 
     if let Err(e) = result {
@@ -275,10 +282,27 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
 }
 
 /// Uninstall a package.
-fn uninstall(name: String) -> anyhow::Result<()> {
+fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
     let armory_home = dirs::home_dir()
         .expect("home directory should exist")
         .join(".armory");
+
+    if name == "self" || name == "armory" {
+        let confirm = if interactive {
+            Confirm::new().with_prompt("uninstall armory?").interact()?
+        } else {
+            true
+        };
+
+        if !confirm {
+            info!("uninstall aborted");
+            return Ok(());
+        }
+
+        fs::remove_dir_all(armory_home).context("failed to delete armory home")?;
+        info!("uninstalled armory");
+        return Ok(());
+    }
 
     let bin = armory_home.join("bin");
 

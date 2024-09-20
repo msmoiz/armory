@@ -8,6 +8,7 @@ anyhow.workspace = true
 base64.workspace = true
 clap.workspace = true
 colored.workspace = true
+dialoguer = "0.11.0"
 dirs.workspace = true
 env_logger.workspace = true
 log.workspace = true
