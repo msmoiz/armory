@@ -16,6 +16,7 @@ use log::{error, info};
 use model::{GetInput, ListInput, PublishInput};
 use std::io::Write;
 
+/// A personal package manager.
 #[derive(Parser, Debug)]
 #[command(version, about, max_term_width = 80)]
 struct Cli {
