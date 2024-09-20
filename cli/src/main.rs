@@ -50,7 +50,11 @@ enum Command {
         version: Option<String>,
     },
     /// List available packages.
-    List,
+    List {
+        /// List installed packages instead. (default: false)
+        #[arg(long, default_value_t = false)]
+        installed: bool,
+    },
     /// Uninstall a package.
     Uninstall {
         /// The name of the package.
@@ -102,7 +106,7 @@ fn main() {
             binary,
         } => publish(name, version, binary, config),
         Command::Install { id, version } => install(id, version, config),
-        Command::List => list(config),
+        Command::List { installed } => list(config, installed),
         Command::Uninstall { name } => uninstall(name),
     };
 
@@ -240,11 +244,31 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 }
 
 /// List available packages.
-fn list(config: Config) -> anyhow::Result<()> {
-    let input = ListInput {};
-    let client = Client::new(config.registry_url);
-    let output = client.list(input).context("'list' request failed")?;
-    for package in output.packages {
+fn list(config: Config, installed: bool) -> anyhow::Result<()> {
+    let packages = if installed {
+        let armory_home = dirs::home_dir()
+            .expect("home directory should exist")
+            .join(".armory");
+
+        let bin = armory_home.join("bin");
+
+        fs::read_dir(bin)
+            .context("failed to read binary dir")?
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                e.path()
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+            })
+            .collect::<Vec<_>>()
+    } else {
+        let input = ListInput {};
+        let client = Client::new(config.registry_url);
+        let output = client.list(input).context("'list' request failed")?;
+        output.packages
+    };
+
+    for package in packages {
         println!("    {package}")
     }
     Ok(())
