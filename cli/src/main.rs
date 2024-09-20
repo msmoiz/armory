@@ -4,6 +4,7 @@ use std::{
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
+    str::FromStr,
 };
 
 use anyhow::{bail, Context};
@@ -37,16 +38,44 @@ enum Command {
     },
     /// Install a package.
     Install {
-        /// The name of the package.
-        name: String,
+        /// The identifier of the package.
+        #[arg(value_name = "PACKAGE[@VERSION]")]
+        id: Identifier,
         /// The version of the package.
         ///
         /// If not specified, the latest version of the package is installed.
+        /// You can use this flag or specify a version in the identifier, but
+        /// you cannot use both methods at the same time.
         #[arg(long)]
         version: Option<String>,
     },
     /// List available packages.
     List,
+}
+
+/// A package identifier.
+#[derive(Debug, Clone)]
+struct Identifier {
+    name: String,
+    version: Option<String>,
+}
+
+impl FromStr for Identifier {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split("@");
+        let name = parts
+            .next()
+            .expect("should be at least one part")
+            .to_owned();
+        let version = parts.next().map(|s| s.to_owned());
+        if parts.count() > 0 {
+            bail!("too many components in package identifier");
+        }
+        let identifier = Identifier { name, version };
+        Ok(identifier)
+    }
 }
 
 fn main() {
@@ -67,7 +96,7 @@ fn main() {
             version,
             binary,
         } => publish(name, version, binary, config),
-        Command::Install { name, version } => install(name, version, config),
+        Command::Install { id, version } => install(id, version, config),
         Command::List => list(config),
     };
 
@@ -158,7 +187,16 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
 }
 
 /// Install a package.
-fn install(name: String, version: Option<String>, config: Config) -> anyhow::Result<()> {
+fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::Result<()> {
+    let name = id.name;
+
+    if id.version.is_some() && version.is_some() {
+        error!("version specified multiple times");
+        return Ok(());
+    }
+
+    let version = id.version.or(version);
+
     let input = GetInput { name, version };
 
     let client = Client::new(config.registry_url);
