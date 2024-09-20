@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    env::VarError,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -7,19 +8,20 @@ use std::{
 
 use anyhow::{bail, Context};
 use axum::{
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Request, State},
     http::{HeaderMap, HeaderValue},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
 use base64::prelude::*;
 use model::{
-    ErrorInfo, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput, PublishError,
-    PublishInput, PublishOutput,
+    ErrorInfo, GeneralError, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput,
+    PublishError, PublishInput, PublishOutput,
 };
 use serde::Serialize;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::fmt;
 
 #[tokio::main]
@@ -38,15 +40,18 @@ async fn main() -> anyhow::Result<()> {
 
     create_armory_dirs(&armory_home).context("failed to create armory directories")?;
 
+    let password = load_password()?;
     let state = AppState {
         armory_home: Arc::new(armory_home),
+        password,
     };
 
     let app = Router::new()
         .route("/publish", post(publish))
         .route("/get", post(get))
         .route("/list", post(list))
-        .with_state(state)
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, authentication))
         .layer(DefaultBodyLimit::max(1024 * 1024 * 100));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
@@ -56,6 +61,18 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Loads the registry password from the environment.
+fn load_password() -> anyhow::Result<Option<String>> {
+    return match std::env::var("ARMORY_PASSWORD") {
+        Ok(password) => Ok(Some(password)),
+        Err(VarError::NotPresent) => {
+            warn!("no password configured; set ARMORY_PASSWORD to set a password");
+            Ok(None)
+        }
+        Err(VarError::NotUnicode(_)) => bail!("password is not valid unicode"),
+    };
 }
 
 fn create_armory_dirs(armory_home: &Path) -> anyhow::Result<()> {
@@ -70,6 +87,8 @@ fn create_armory_dirs(armory_home: &Path) -> anyhow::Result<()> {
 struct AppState {
     /// Home directory of the application.
     armory_home: Arc<PathBuf>,
+    /// Registry password.
+    password: Option<String>,
 }
 
 pub mod header {
@@ -77,6 +96,28 @@ pub mod header {
     ///
     /// Should be set to `true` or `false`.
     pub const OK: &'static str = "x-ok";
+    /// The password to use for authentication.
+    pub const PASSWORD: &'static str = "x-password";
+}
+
+/// An authentication layer.
+async fn authentication(state: State<AppState>, request: Request, next: Next) -> Response {
+    if let Some(password) = state.password.as_ref() {
+        let provided = request
+            .headers()
+            .get(header::PASSWORD)
+            .and_then(|v| v.to_str().ok());
+
+        if provided.is_none() {
+            return Error(GeneralError::PasswordMissing).into_response();
+        }
+
+        if provided.unwrap() != password {
+            return Error(GeneralError::PasswordInvalid).into_response();
+        }
+    }
+    let response = next.run(request).await;
+    response
 }
 
 /// Output response.

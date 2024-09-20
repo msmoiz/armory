@@ -16,6 +16,7 @@ use dialoguer::Confirm;
 use env_logger::fmt::Formatter;
 use log::{error, info};
 use model::{GetInput, ListInput, PublishInput};
+use serde::Deserialize;
 use std::io::Write;
 
 /// A personal package manager.
@@ -99,7 +100,13 @@ fn main() {
 
     let cli = Cli::parse();
 
-    let config = Config::load();
+    let config = match Config::load() {
+        Ok(config) => config,
+        Err(e) => {
+            error!("{e:?}");
+            std::process::exit(1);
+        }
+    };
 
     let Some(command) = cli.command else {
         Cli::command().print_help().unwrap();
@@ -153,21 +160,46 @@ fn init_logger() {
         .init();
 }
 
+/// Application config file.
+#[derive(Deserialize)]
+struct ConfigFile {
+    /// The password to use for authentication.
+    password: String,
+}
+
 /// Application config.
 struct Config {
     /// The URL of the registry.
     registry_url: String,
+    /// The password to use for authentication.
+    password: Option<String>,
 }
 
 impl Config {
     /// Loads config from the environment.
-    fn load() -> Self {
-        Self {
+    fn load() -> anyhow::Result<Self> {
+        let armory_home = dirs::home_dir()
+            .expect("home directory should exist")
+            .join(".armory");
+
+        let config_file = armory_home.join("config.toml");
+
+        let password = if config_file.exists() {
+            let content = fs::read_to_string(config_file).context("failed to read config file")?;
+            let config: ConfigFile =
+                toml::from_str(&content).context("failed to parse config file")?;
+            Some(config.password)
+        } else {
+            None
+        };
+
+        Ok(Self {
             #[cfg(debug_assertions)]
             registry_url: String::from("http://localhost:3000"),
             #[cfg(not(debug_assertions))]
             registry_url: String::from("https://armory.msmoiz.com"),
-        }
+            password,
+        })
     }
 }
 
@@ -196,7 +228,7 @@ fn publish(name: String, version: String, binary: PathBuf, config: Config) -> an
         content,
     };
 
-    let client = Client::new(config.registry_url);
+    let client = Client::new(config.registry_url, config.password);
     client.publish(input).context("'publish' request failed")?;
     info!("published {name}-{version}");
 
@@ -216,7 +248,7 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     let input = GetInput { name, version };
 
-    let client = Client::new(config.registry_url);
+    let client = Client::new(config.registry_url, config.password);
     let output = client.get(input).context("'get' request failed")?;
 
     let content = BASE64_STANDARD
@@ -270,7 +302,7 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
             .collect::<Vec<_>>()
     } else {
         let input = ListInput {};
-        let client = Client::new(config.registry_url);
+        let client = Client::new(config.registry_url, config.password);
         let output = client.list(input).context("'list' request failed")?;
         output.packages
     };

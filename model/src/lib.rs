@@ -3,9 +3,44 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Error information.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ErrorInfo {
     pub code: String,
+}
+
+/// General errors that are shared across operations.
+#[derive(Error, Debug)]
+pub enum GeneralError {
+    #[error("no password was provided")]
+    PasswordMissing,
+    #[error("password is invalid")]
+    PasswordInvalid,
+}
+
+impl From<GeneralError> for ErrorInfo {
+    fn from(value: GeneralError) -> Self {
+        let code = match value {
+            GeneralError::PasswordMissing => "password_missing",
+            GeneralError::PasswordInvalid => "password_invalid",
+        };
+
+        ErrorInfo {
+            code: code.to_owned(),
+        }
+    }
+}
+
+impl TryFrom<ErrorInfo> for GeneralError {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ErrorInfo) -> Result<Self, Self::Error> {
+        let code = value.code.as_ref();
+        match code {
+            "password_missing" => Ok(Self::PasswordMissing),
+            "password_invalid" => Ok(Self::PasswordInvalid),
+            _ => bail!("unrecognized error code: {code}"),
+        }
+    }
 }
 
 /// Input for the publish operation.

@@ -16,3 +16,4 @@ model = { path = "../model" }
 reqwest.workspace = true
 serde.workspace = true
 thiserror = "1.0.63"
+toml = "0.8.19"

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use model::{
-    ErrorInfo, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput, PublishError,
-    PublishInput, PublishOutput,
+    ErrorInfo, GeneralError, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput,
+    PublishError, PublishInput, PublishOutput,
 };
 use reqwest::blocking::Client as HttpClient;
 use serde::{de::DeserializeOwned, Serialize};
@@ -12,6 +12,8 @@ mod header {
     ///
     /// Should be set to `true` or `false`.
     pub const OK: &'static str = "x-ok";
+    /// The password to use for authentication.
+    pub const PASSWORD: &'static str = "x-password";
 }
 
 /// Client errors.
@@ -24,26 +26,34 @@ pub enum Error<T> {
     /// the server, missing headers, and so forth.
     #[error("transport error: {0:?}")]
     Transport(anyhow::Error),
-    /// A semantic error.
+    /// A general error that can occur for any operation.
+    ///
+    /// This includes authentication and authorization errors and other errors
+    /// that are not tied to a specific operation.
+    #[error("{0}")]
+    General(GeneralError),
+    /// An error specific to the requested operation.
     ///
     /// This covers substantive errors returned by the server and is only
     /// returned when the request successfully reaches the server and a response
     /// is returned.
     #[error("{0}")]
-    Semantic(T),
+    Specific(T),
 }
 
 /// A client for the armory registry.
 pub struct Client {
     registry_url: String,
+    password: Option<String>,
     client: HttpClient,
 }
 
 impl Client {
     /// Creates a new client.
-    pub fn new(registry_url: String) -> Self {
+    pub fn new(registry_url: String, password: Option<String>) -> Self {
         Self {
             registry_url,
+            password,
             client: HttpClient::new(),
         }
     }
@@ -57,10 +67,13 @@ impl Client {
     {
         let url = format!("{}{path}", self.registry_url);
 
-        let response = self
-            .client
-            .post(url)
-            .json(&input)
+        let mut request = self.client.post(url).json(&input);
+
+        if let Some(password) = self.password.as_ref() {
+            request = request.header(header::PASSWORD, password);
+        }
+
+        let response = request
             .send()
             .context("failed to send request")
             .map_err(|e| Error::Transport(e))?;
@@ -84,12 +97,16 @@ impl Client {
                 .context("error message is malformed")
                 .map_err(|e| Error::Transport(e))?;
 
+            if let Ok(error) = TryInto::<GeneralError>::try_into(error_info.clone()) {
+                return Err(Error::General(error));
+            }
+
             let error: Err = error_info
                 .try_into()
                 .context("failed to parse error code")
                 .map_err(|e| Error::Transport(e))?;
 
-            return Err(Error::Semantic(error));
+            return Err(Error::Specific(error));
         }
 
         let output = response
