@@ -51,6 +51,11 @@ enum Command {
     },
     /// List available packages.
     List,
+    /// Uninstall a package.
+    Uninstall {
+        /// The name of the package.
+        name: String,
+    },
 }
 
 /// A package identifier.
@@ -98,6 +103,7 @@ fn main() {
         } => publish(name, version, binary, config),
         Command::Install { id, version } => install(id, version, config),
         Command::List => list(config),
+        Command::Uninstall { name } => uninstall(name),
     };
 
     if let Err(e) = result {
@@ -241,5 +247,28 @@ fn list(config: Config) -> anyhow::Result<()> {
     for package in output.packages {
         println!("    {package}")
     }
+    Ok(())
+}
+
+/// Uninstall a package.
+fn uninstall(name: String) -> anyhow::Result<()> {
+    let armory_home = dirs::home_dir()
+        .expect("home directory should exist")
+        .join(".armory");
+
+    let bin = armory_home.join("bin");
+
+    let artifact_path = bin.join(&name);
+
+    if !artifact_path.is_file() {
+        error!("package '{name}' does not exist");
+        return Ok(());
+    }
+
+    fs::remove_file(&artifact_path)
+        .with_context(|| format!("failed to delete {}", artifact_path.display()))?;
+
+    info!("deleted binary at {}", artifact_path.display());
+
     Ok(())
 }
