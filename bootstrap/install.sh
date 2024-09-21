@@ -6,6 +6,7 @@ info() {
     echo "install: $@"
 }
 
+# Download the binary
 armory_bin="armory_bootstrap"
 
 info "downloading armory"
@@ -14,14 +15,19 @@ curl https://armory.msmoiz.com/download/armory \
     --silent
 info "downloaded armory"
 
+# Make it executable
 chmod +x "${armory_bin}"
 
-info "installing latest version"
-./"${armory_bin}" install armory 2>&1 | sed 's/^/armory: /'
+# Create the armory home and binary dirs
+armory_home="${HOME}/.armory"
+armory_home_bin="${armory_home}/bin"
+if [ ! -d "${armory_home_bin}" ]; then
+    mkdir -p "${armory_home_bin}"
+fi
 
-info "cleaning up"
-rm ${armory_bin}
+# Install the binary to the correct location
+install_path="${armory_home_bin}/armory"
+mv "${armory_bin}" "${install_path}"
 
-info "installed armory"
-
-info "add ${HOME}/.armory/bin to path to complete installation"
+info "installed armory to ${install_path}"
+info "add ${armory_home_bin} to path to complete installation"
