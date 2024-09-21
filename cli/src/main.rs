@@ -1,6 +1,7 @@
 mod client;
 
 use std::{
+    collections::HashMap,
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
@@ -12,7 +13,7 @@ use base64::{prelude::BASE64_STANDARD, Engine};
 use clap::{command, ArgAction, CommandFactory, Parser, Subcommand};
 use client::Client;
 use colored::{Color, Colorize};
-use dialoguer::Confirm;
+use dialoguer::{Confirm, Password};
 use env_logger::fmt::Formatter;
 use log::{error, info};
 use model::{GetInput, ListInput, PublishInput};
@@ -68,6 +69,8 @@ enum Command {
         #[arg(long = "non-interactive",  default_value_t = true, action = ArgAction::SetFalse)]
         interactive: bool,
     },
+    /// Set up registry credentials.
+    Login,
 }
 
 /// A package identifier.
@@ -122,6 +125,7 @@ fn main() {
         Command::Install { id, version } => install(id, version, config),
         Command::List { installed } => list(config, installed),
         Command::Uninstall { name, interactive } => uninstall(name, interactive),
+        Command::Login => login(),
     };
 
     if let Err(e) = result {
@@ -349,6 +353,28 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
         .with_context(|| format!("failed to delete {}", artifact_path.display()))?;
 
     info!("deleted binary at {}", artifact_path.display());
+
+    Ok(())
+}
+
+/// Set up registry credentials.
+fn login() -> anyhow::Result<()> {
+    let armory_home = dirs::home_dir()
+        .expect("home directory should exist")
+        .join(".armory");
+
+    let config_file = armory_home.join("config.toml");
+
+    let password = Password::new()
+        .with_prompt("enter your password")
+        .interact()?;
+
+    let config = HashMap::from([("password", password)]);
+
+    fs::write(&config_file, toml::to_string_pretty(&config)?)
+        .context("failed to save config file")?;
+
+    info!("credentials saved at {}", config_file.display());
 
     Ok(())
 }
