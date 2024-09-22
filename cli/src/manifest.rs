@@ -46,7 +46,11 @@ impl Manifest {
     }
 
     /// Adds a package to the manifest.
+    ///
+    /// If a different version of the package is already in the manifest, it is
+    /// overwritten with the new version.
     pub fn add_package(&mut self, name: String, version: String) {
+        self.remove_package(&name);
         self.packages.push(PackageRecord { name, version });
     }
 
@@ -54,7 +58,7 @@ impl Manifest {
     ///
     /// This method is idempotent and will not fail if the package has already
     /// been removed or is not present in the manifest.
-    pub fn remove_package(&mut self, name: String) {
+    pub fn remove_package(&mut self, name: &str) {
         if let Some(pos) = self
             .packages
             .iter()

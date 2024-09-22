@@ -355,7 +355,7 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
 
     Manifest::load_or_create()
         .and_then(|mut manifest| {
-            manifest.remove_package(name);
+            manifest.remove_package(&name);
             manifest.save()
         })
         .context("failed to update manifest")?;
