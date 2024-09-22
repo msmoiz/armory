@@ -1,4 +1,5 @@
 mod client;
+mod manifest;
 
 use std::{
     collections::HashMap,
@@ -16,6 +17,7 @@ use colored::{Color, Colorize};
 use dialoguer::{Confirm, Password};
 use env_logger::fmt::Formatter;
 use log::{error, info};
+use manifest::Manifest;
 use model::{GetInput, ListInput, PublishInput};
 use serde::Deserialize;
 use std::io::Write;
@@ -283,37 +285,34 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     info!("installed binary to {}", artifact_path.display());
 
+    Manifest::load_or_create()
+        .and_then(|mut manifest| {
+            manifest.add_package(output.name, output.version);
+            manifest.save()
+        })
+        .context("failed to update manifest")?;
+
     Ok(())
 }
 
 /// List available packages.
 fn list(config: Config, installed: bool) -> anyhow::Result<()> {
-    let packages = if installed {
-        let armory_home = dirs::home_dir()
-            .expect("home directory should exist")
-            .join(".armory");
-
-        let bin = armory_home.join("bin");
-
-        fs::read_dir(bin)
-            .context("failed to read binary dir")?
-            .filter_map(Result::ok)
-            .filter_map(|e| {
-                e.path()
-                    .file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-            })
-            .collect::<Vec<_>>()
+    if installed {
+        let manifest = Manifest::load_or_create().context("failed to load manifest")?;
+        println!("installed packages:");
+        for package in manifest.packages() {
+            println!("    {0: <20} {1: <10}", package.name, package.version)
+        }
     } else {
         let input = ListInput {};
         let client = Client::new(config.registry_url, config.password);
         let output = client.list(input).context("'list' request failed")?;
-        output.packages
-    };
-
-    for package in packages {
-        println!("    {package}")
+        println!("available packages:");
+        for package in output.packages {
+            println!("    {package}")
+        }
     }
+
     Ok(())
 }
 
@@ -353,6 +352,13 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
         .with_context(|| format!("failed to delete {}", artifact_path.display()))?;
 
     info!("deleted binary at {}", artifact_path.display());
+
+    Manifest::load_or_create()
+        .and_then(|mut manifest| {
+            manifest.remove_package(name);
+            manifest.save()
+        })
+        .context("failed to update manifest")?;
 
     Ok(())
 }
