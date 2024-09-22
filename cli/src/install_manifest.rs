@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// The manifest is stored at ~/.armory/installed.toml.
 #[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Manifest {
+pub struct InstallManifest {
     packages: Vec<PackageRecord>,
 }
 
@@ -20,7 +20,7 @@ pub struct PackageRecord {
     pub version: String,
 }
 
-impl Manifest {
+impl InstallManifest {
     /// Returns the path to the manifest file.
     fn path() -> PathBuf {
         dirs::home_dir()

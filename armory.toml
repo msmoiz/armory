@@ -1,0 +1,4 @@
+[package]
+name = "armory"
+version = "0.1.0"
+path = "target/x86_64-unknown-linux-musl/release/armory"

@@ -1,11 +1,11 @@
 mod client;
-mod manifest;
+mod install_manifest;
+mod package_manifest;
 
 use std::{
     collections::HashMap,
     fs::{self, Permissions},
     os::unix::fs::PermissionsExt,
-    path::PathBuf,
     str::FromStr,
 };
 
@@ -16,9 +16,10 @@ use client::Client;
 use colored::{Color, Colorize};
 use dialoguer::{Confirm, Password};
 use env_logger::fmt::Formatter;
+use install_manifest::InstallManifest;
 use log::{error, info};
-use manifest::Manifest;
 use model::{GetInfoInput, GetInput, ListInput, PublishInput};
+use package_manifest::PackageManifest;
 use serde::Deserialize;
 use std::io::Write;
 
@@ -33,14 +34,12 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Upload a package.
-    Publish {
-        /// The name of the package.
-        name: String,
-        /// The version of the package.
-        version: String,
-        /// The path to the package binary to upload.
-        binary: PathBuf,
-    },
+    ///
+    /// Package information is sourced from _armory.toml_, a package manifest
+    /// file, located in the current directory. The file should contain a
+    /// `package` section with `name`, `version`, and a `path` to the binary for
+    /// the package.
+    Publish,
     /// Install a package.
     Install {
         /// The identifier of the package.
@@ -119,11 +118,7 @@ fn main() {
     };
 
     let result = match command {
-        Command::Publish {
-            name,
-            version,
-            binary,
-        } => publish(name, version, binary, config),
+        Command::Publish => publish(config),
         Command::Install { id, version } => install(id, version, config),
         Command::List { installed } => list(config, installed),
         Command::Uninstall { name, interactive } => uninstall(name, interactive),
@@ -217,13 +212,23 @@ pub mod header {
 }
 
 /// Publish a package.
-fn publish(name: String, version: String, binary: PathBuf, config: Config) -> anyhow::Result<()> {
-    if !binary.is_file() {
-        bail!("{binary:?} is not a file");
+fn publish(config: Config) -> anyhow::Result<()> {
+    let manifest = PackageManifest::load().context("failed to load package manifest")?;
+
+    let package_manifest::Package {
+        name,
+        version,
+        path,
+    } = manifest.package;
+
+    if !path.is_file() {
+        bail!("binary does not exist at {}", path.display());
     }
 
+    info!("publishing {name}-{version} | binary: {}", path.display());
+
     let content = {
-        let bytes = fs::read(binary).context("failed to read binary file")?;
+        let bytes = fs::read(&path).context("failed to load binary")?;
         let encoded = BASE64_STANDARD.encode(bytes);
         encoded
     };
@@ -285,7 +290,7 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     info!("installed binary to {}", artifact_path.display());
 
-    Manifest::load_or_create()
+    InstallManifest::load_or_create()
         .and_then(|mut manifest| {
             manifest.add_package(output.name, output.version);
             manifest.save()
@@ -298,7 +303,7 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 /// List available packages.
 fn list(config: Config, installed: bool) -> anyhow::Result<()> {
     if installed {
-        let manifest = Manifest::load_or_create().context("failed to load manifest")?;
+        let manifest = InstallManifest::load_or_create().context("failed to load manifest")?;
         println!("installed packages:");
         for package in manifest.packages() {
             println!("    {0: <20} {1: <10}", package.name, package.version)
@@ -367,7 +372,7 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
 
     info!("deleted binary at {}", artifact_path.display());
 
-    Manifest::load_or_create()
+    InstallManifest::load_or_create()
         .and_then(|mut manifest| {
             manifest.remove_package(&name);
             manifest.save()
