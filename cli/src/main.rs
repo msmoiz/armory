@@ -18,7 +18,7 @@ use dialoguer::{Confirm, Password};
 use env_logger::fmt::Formatter;
 use log::{error, info};
 use manifest::Manifest;
-use model::{GetInput, ListInput, PublishInput};
+use model::{GetInfoInput, GetInput, ListInput, PublishInput};
 use serde::Deserialize;
 use std::io::Write;
 
@@ -309,7 +309,21 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
         let output = client.list(input).context("'list' request failed")?;
         println!("available packages:");
         for package in output.packages {
-            println!("    {package}")
+            let get_info_input = GetInfoInput {
+                name: package.clone(),
+            };
+
+            let package = client
+                .get_info(get_info_input)
+                .with_context(|| format!("failed to fetch info for package {package}"))?;
+
+            let latest_version = package
+                .versions
+                .iter()
+                .max()
+                .expect("should be at least one version");
+
+            println!("    {0: <20} {1: <10}", package.name, latest_version)
         }
     }
 

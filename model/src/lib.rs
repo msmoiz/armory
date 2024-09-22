@@ -140,6 +140,54 @@ impl TryFrom<ErrorInfo> for GetError {
     }
 }
 
+/// Input for the get_info operation.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetInfoInput {
+    pub name: String,
+}
+
+/// Output for the get_info operation.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetInfoOutput {
+    pub name: String,
+    pub versions: Vec<String>,
+}
+
+/// Errors for the get_info operation.
+#[derive(Error, Debug)]
+pub enum GetInfoError {
+    #[error("package does not exist")]
+    PackageNotFound,
+    #[error("internal error")]
+    InternalError,
+}
+
+impl From<GetInfoError> for ErrorInfo {
+    fn from(value: GetInfoError) -> Self {
+        let code = match value {
+            GetInfoError::PackageNotFound => "package_not_found",
+            GetInfoError::InternalError => "internal_error",
+        };
+
+        ErrorInfo {
+            code: code.to_owned(),
+        }
+    }
+}
+
+impl TryFrom<ErrorInfo> for GetInfoError {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ErrorInfo) -> Result<Self, Self::Error> {
+        let code = value.code.as_ref();
+        match code {
+            "package_not_found" => Ok(Self::PackageNotFound),
+            "internal_error" => Ok(Self::InternalError),
+            _ => bail!("unrecognized error code: {code}"),
+        }
+    }
+}
+
 /// Input for the list operation.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ListInput {}

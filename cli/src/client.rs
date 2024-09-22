@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use model::{
-    ErrorInfo, GeneralError, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput,
-    PublishError, PublishInput, PublishOutput,
+    ErrorInfo, GeneralError, GetError, GetInfoError, GetInfoInput, GetInfoOutput, GetInput,
+    GetOutput, ListError, ListInput, ListOutput, PublishError, PublishInput, PublishOutput,
 };
 use reqwest::blocking::Client as HttpClient;
 use serde::{de::DeserializeOwned, Serialize};
@@ -125,6 +125,11 @@ impl Client {
     /// Gets a package from the registry.
     pub fn get(&self, input: GetInput) -> Result<GetOutput, Error<GetError>> {
         self.send("/get", input)
+    }
+
+    /// Gets information about a package from the registry.
+    pub fn get_info(&self, input: GetInfoInput) -> Result<GetInfoOutput, Error<GetInfoError>> {
+        self.send("/get-info", input)
     }
 
     /// Lists packages in the registry.

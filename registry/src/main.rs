@@ -17,8 +17,8 @@ use axum::{
 };
 use base64::prelude::*;
 use model::{
-    ErrorInfo, GeneralError, GetError, GetInput, GetOutput, ListError, ListInput, ListOutput,
-    PublishError, PublishInput, PublishOutput,
+    ErrorInfo, GeneralError, GetError, GetInfoError, GetInfoInput, GetInfoOutput, GetInput,
+    GetOutput, ListError, ListInput, ListOutput, PublishError, PublishInput, PublishOutput,
 };
 use serde::Serialize;
 use tracing::{error, info, warn};
@@ -49,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/publish", post(publish))
         .route("/get", post(get))
+        .route("/get-info", post(get_info))
         .route("/list", post(list))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, authentication))
@@ -241,6 +242,43 @@ async fn get(
         name: input.name,
         version,
         content,
+    }))
+}
+
+async fn get_info(
+    State(state): State<AppState>,
+    Json(input): Json<GetInfoInput>,
+) -> Result<Output<GetInfoOutput>, Error<GetInfoError>> {
+    info!("handling get info request");
+
+    let registry = state.armory_home.join("registry");
+
+    let entries = match fs::read_dir(&registry).context("failed to read registry") {
+        Ok(entries) => entries,
+        Err(e) => {
+            error!("internal failure: {e}");
+            return Err(Error(GetInfoError::InternalError));
+        }
+    };
+
+    let versions = entries
+        .filter_map(Result::ok)
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|e| {
+            let mut parts = e.split('-').collect::<Vec<_>>();
+            parts.pop(); // discard version
+            parts.join("-") == input.name
+        })
+        .map(|e| e.split("-").last().unwrap().to_owned())
+        .collect::<Vec<_>>();
+
+    if versions.is_empty() {
+        return Err(Error(GetInfoError::PackageNotFound));
+    }
+
+    Ok(Output(GetInfoOutput {
+        name: input.name,
+        versions,
     }))
 }
 
