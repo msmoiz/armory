@@ -1,12 +1,14 @@
 use std::{fs, path::PathBuf};
 
 use anyhow::{bail, Context};
+use model::Triple;
 use serde::Deserialize;
 
 /// Contains information needed to publish a package.
 #[derive(Deserialize)]
 pub struct PackageManifest {
     pub package: Package,
+    pub targets: Vec<Target>,
 }
 
 /// A package description.
@@ -16,6 +18,13 @@ pub struct Package {
     pub name: String,
     /// The version of the package.
     pub version: String,
+}
+
+/// A package target.
+#[derive(Deserialize)]
+pub struct Target {
+    /// The platform that the package binary corresponds to.
+    pub triple: Triple,
     /// The path to the package binary.
     pub path: PathBuf,
 }

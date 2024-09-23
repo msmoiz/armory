@@ -1,3 +1,5 @@
+use std::{fmt::Display, str::FromStr};
+
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -43,11 +45,56 @@ impl TryFrom<ErrorInfo> for GeneralError {
     }
 }
 
+/// Target triple.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Triple {
+    X86_64Linux,
+    Aarch64Linux,
+    X86_64Darwin,
+    Aarch64Darwin,
+    X86_64Windows,
+    Aarch64Windows,
+}
+
+impl FromStr for Triple {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let triple = match s {
+            "x86_64_linux" => Triple::X86_64Linux,
+            "aarch64_linux" => Triple::Aarch64Linux,
+            "x86_64_darwin" => Triple::X86_64Darwin,
+            "aarch64_darwin" => Triple::Aarch64Darwin,
+            "x86_64_windows" => Triple::X86_64Windows,
+            "aarch64_windows" => Triple::Aarch64Windows,
+            _ => bail!("unrecognized triple {s}"),
+        };
+        Ok(triple)
+    }
+}
+
+impl Display for Triple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            Triple::X86_64Linux => "x86_64_linux",
+            Triple::Aarch64Linux => "aarch64_linux",
+            Triple::X86_64Darwin => "x86_64_darwin",
+            Triple::Aarch64Darwin => "aarch64_darwin",
+            Triple::X86_64Windows => "x86_64_windows",
+            Triple::Aarch64Windows => "aarch64_windows",
+        };
+
+        write!(f, "{text}")
+    }
+}
+
 /// Input for the publish operation.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PublishInput {
     pub name: String,
     pub version: String,
+    pub triple: Triple,
     pub content: String,
 }
 
@@ -99,6 +146,7 @@ impl TryFrom<ErrorInfo> for PublishError {
 pub struct GetInput {
     pub name: String,
     pub version: Option<String>,
+    pub triple: Triple,
 }
 
 /// Output for the get operation.
@@ -148,6 +196,7 @@ impl TryFrom<ErrorInfo> for GetError {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct GetInfoInput {
     pub name: String,
+    pub triple: Triple,
 }
 
 /// Output for the get_info operation.
@@ -194,7 +243,9 @@ impl TryFrom<ErrorInfo> for GetInfoError {
 
 /// Input for the list operation.
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ListInput {}
+pub struct ListInput {
+    pub triple: Triple,
+}
 
 /// Output for the list operation.
 #[derive(Serialize, Deserialize, Debug)]

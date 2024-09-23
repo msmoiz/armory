@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     env::VarError,
     fs,
     path::{Path, PathBuf},
@@ -180,7 +179,7 @@ async fn publish(
     let artifact_path = state
         .armory_home
         .join("registry")
-        .join(format!("{}-{}", input.name, input.version));
+        .join(format!("{}/{}/{}", input.name, input.triple, input.version));
 
     if let Some(existing) = fs::read(&artifact_path).ok() {
         let existing_hash = Sha256::digest(existing);
@@ -190,12 +189,19 @@ async fn publish(
         }
     }
 
+    if let Err(e) = fs::create_dir_all(artifact_path.parent().expect("path should have parent"))
+        .with_context(|| format!("failed to create artifact dir"))
+    {
+        error!("internal failure: {e:?}");
+        return Err(Error(PublishError::InternalError));
+    }
+
     if let Err(e) = fs::write(&artifact_path, content)
         .with_context(|| format!("failed to write artifact to {}", artifact_path.display()))
     {
-        error!("internal failure: {e}");
+        error!("internal failure: {e:?}");
         return Err(Error(PublishError::InternalError));
-    };
+    }
 
     info!("published artifact to {}", artifact_path.display());
 
@@ -209,11 +215,18 @@ async fn get(
     info!("handling get request");
 
     let registry = state.armory_home.join("registry");
+    let target_dir = registry.join(&input.name).join(input.triple.to_string());
+
+    if !target_dir.is_dir() {
+        return Err(Error(GetError::PackageNotFound));
+    }
 
     let version = match input.version {
         Some(version) => version,
         None => {
-            let entries = match fs::read_dir(&registry).context("failed to read registry") {
+            let entries = match fs::read_dir(&target_dir)
+                .with_context(|| format!("failed to read target dir {}", target_dir.display()))
+            {
                 Ok(entries) => entries,
                 Err(e) => {
                     error!("internal failure: {e}");
@@ -224,13 +237,8 @@ async fn get(
             let version = entries
                 .filter_map(Result::ok)
                 .map(|e| e.file_name().to_string_lossy().to_string())
-                .filter(|e| {
-                    let mut parts = e.split('-').collect::<Vec<_>>();
-                    parts.pop(); // discard version
-                    parts.join("-") == input.name
-                })
-                .max_by(|x, y| x.split("-").last().cmp(&y.split("-").last()))
-                .map(|e| e.split("-").last().unwrap().to_owned());
+                .max_by(|x, y| x.cmp(&y))
+                .map(|e| e.to_owned());
 
             match version {
                 Some(version) => version,
@@ -239,7 +247,7 @@ async fn get(
         }
     };
 
-    let artifact_path = registry.join(format!("{}-{version}", input.name));
+    let artifact_path = target_dir.join(&version);
 
     let Ok(bytes) = fs::read(&artifact_path) else {
         return Err(Error(GetError::PackageNotFound));
@@ -261,8 +269,15 @@ async fn get_info(
     info!("handling get info request");
 
     let registry = state.armory_home.join("registry");
+    let target_dir = registry.join(&input.name).join(input.triple.to_string());
 
-    let entries = match fs::read_dir(&registry).context("failed to read registry") {
+    if !target_dir.is_dir() {
+        return Err(Error(GetInfoError::PackageNotFound));
+    }
+
+    let entries = match fs::read_dir(&target_dir)
+        .with_context(|| format!("failed to read target dir {}", target_dir.display()))
+    {
         Ok(entries) => entries,
         Err(e) => {
             error!("internal failure: {e}");
@@ -273,12 +288,6 @@ async fn get_info(
     let versions = entries
         .filter_map(Result::ok)
         .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|e| {
-            let mut parts = e.split('-').collect::<Vec<_>>();
-            parts.pop(); // discard version
-            parts.join("-") == input.name
-        })
-        .map(|e| e.split("-").last().unwrap().to_owned())
         .collect::<Vec<_>>();
 
     if versions.is_empty() {
@@ -293,7 +302,7 @@ async fn get_info(
 
 async fn list(
     State(state): State<AppState>,
-    Json(_): Json<ListInput>,
+    Json(input): Json<ListInput>,
 ) -> Result<Output<ListOutput>, Error<ListError>> {
     info!("handling list request");
 
@@ -307,7 +316,7 @@ async fn list(
         }
     };
 
-    let mut packages = HashSet::<String>::new();
+    let mut packages = Vec::new();
     for entry in entries {
         let entry = match entry.context("failed to read registry entry") {
             Ok(entry) => entry,
@@ -317,17 +326,21 @@ async fn list(
             }
         };
 
-        let path = entry.path();
-        if path.is_file() {
-            let name = path.file_name().expect("path should point to a file");
-            let name = name.to_str().expect("name should be valid unicode");
-            let mut parts: Vec<_> = name.split('-').collect();
-            parts.pop(); // discard the version
-            packages.insert(parts.join("-"));
+        let name = entry
+            .path()
+            .file_name()
+            .expect("name should exist")
+            .to_string_lossy()
+            .to_string();
+
+        let triple = entry.path().join(input.triple.to_string());
+        if !triple.is_dir() {
+            // no versions exist for the target triple
+            continue;
         }
+
+        packages.push(name);
     }
 
-    Ok(Output(ListOutput {
-        packages: packages.into_iter().collect(),
-    }))
+    Ok(Output(ListOutput { packages }))
 }

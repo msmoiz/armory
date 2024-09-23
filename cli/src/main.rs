@@ -1,6 +1,7 @@
 mod client;
 mod install_manifest;
 mod package_manifest;
+mod target;
 
 use std::{
     collections::HashMap,
@@ -18,7 +19,7 @@ use dialoguer::{Confirm, Password};
 use env_logger::fmt::Formatter;
 use install_manifest::InstallManifest;
 use log::{error, info};
-use model::{GetInfoInput, GetInput, ListInput, PublishInput};
+use model::{GetInfoInput, GetInput, ListInput, PublishInput, Triple};
 use package_manifest::PackageManifest;
 use serde::Deserialize;
 use std::io::Write;
@@ -37,9 +38,27 @@ enum Command {
     ///
     /// Package information is sourced from _armory.toml_, a package manifest
     /// file, located in the current directory. The file should contain a
-    /// `package` section with `name`, `version`, and a `path` to the binary for
-    /// the package.
-    Publish,
+    /// `package` section with `name` and `version`. It should also contain one
+    /// or more [[target]] sections with a `triple` and the `path` to the binary for
+    /// that triple.
+    ///
+    /// The following triples are supported:
+    ///
+    /// - x86_64_linux
+    /// - aarch64_linux
+    /// - x86_64_darwin
+    /// - aarch64_darwin
+    /// - x86_64_windows
+    /// - aarch64_windows
+    Publish {
+        /// The target triple to publish.
+        ///
+        /// If there is only one target defined in the package manifest, this
+        /// flag does not need to be specified. If there is more than target
+        /// defined, this flag must be specified to select one.
+        #[arg(value_name = "TARGET")]
+        triple: Option<Triple>,
+    },
     /// Install a package.
     Install {
         /// The identifier of the package.
@@ -54,6 +73,8 @@ enum Command {
         version: Option<String>,
     },
     /// List available packages.
+    ///
+    /// This only shows packages that are available for the current platform.
     List {
         /// List installed packages instead. (default: false)
         #[arg(long, default_value_t = false)]
@@ -118,7 +139,7 @@ fn main() {
     };
 
     let result = match command {
-        Command::Publish => publish(config),
+        Command::Publish { triple } => publish(config, triple),
         Command::Install { id, version } => install(id, version, config),
         Command::List { installed } => list(config, installed),
         Command::Uninstall { name, interactive } => uninstall(name, interactive),
@@ -212,36 +233,63 @@ pub mod header {
 }
 
 /// Publish a package.
-fn publish(config: Config) -> anyhow::Result<()> {
-    let manifest = PackageManifest::load().context("failed to load package manifest")?;
+fn publish(config: Config, triple: Option<Triple>) -> anyhow::Result<()> {
+    let PackageManifest { package, targets } =
+        PackageManifest::load().context("failed to load package manifest")?;
 
-    let package_manifest::Package {
-        name,
-        version,
-        path,
-    } = manifest.package;
+    let target = match (targets.len(), triple) {
+        (0, _) => bail!("there are not targets defined"),
+        (1, _) => &targets[0],
+        (_, None) => bail!(
+            "no target selected; options: {:?}",
+            targets
+                .iter()
+                .map(|t| format!("{}", t.triple))
+                .collect::<Vec<_>>()
+        ),
+        (_, Some(triple)) => match targets.iter().find(|t| t.triple == triple) {
+            Some(target) => target,
+            None => bail!(
+                "target not defined; options: {:?}",
+                targets
+                    .iter()
+                    .map(|t| format!("{}", t.triple))
+                    .collect::<Vec<_>>()
+            ),
+        },
+    };
 
-    if !path.is_file() {
-        bail!("binary does not exist at {}", path.display());
+    if !target.path.is_file() {
+        bail!("binary does not exist at {}", target.path.display());
     }
 
-    info!("publishing {name}-{version} | binary: {}", path.display());
+    info!(
+        "publishing {}-{}-{} | binary: {}",
+        package.name,
+        package.version,
+        target.triple,
+        target.path.display()
+    );
 
     let content = {
-        let bytes = fs::read(&path).context("failed to load binary")?;
+        let bytes = fs::read(&target.path).context("failed to load binary")?;
         let encoded = BASE64_STANDARD.encode(bytes);
         encoded
     };
 
     let input = PublishInput {
-        name: name.clone(),
-        version: version.clone(),
+        name: package.name.clone(),
+        version: package.version.clone(),
+        triple: target.triple.clone(),
         content,
     };
 
     let client = Client::new(config.registry_url, config.password);
     client.publish(input).context("'publish' request failed")?;
-    info!("published {name}-{version}");
+    info!(
+        "published {}-{}-{}",
+        package.name, package.version, target.triple
+    );
 
     Ok(())
 }
@@ -257,7 +305,13 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     let version = id.version.or(version);
 
-    let input = GetInput { name, version };
+    let triple = target::triple()?;
+
+    let input = GetInput {
+        name,
+        version,
+        triple,
+    };
 
     let client = Client::new(config.registry_url, config.password);
     let output = client.get(input).context("'get' request failed")?;
@@ -309,12 +363,16 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
             println!("    {0: <20} {1: <10}", package.name, package.version)
         }
     } else {
-        let input = ListInput {};
+        let triple = target::triple()?;
+        let input = ListInput {
+            triple: triple.clone(),
+        };
         let client = Client::new(config.registry_url, config.password);
         let output = client.list(input).context("'list' request failed")?;
         println!("available packages:");
         for package in output.packages {
             let get_info_input = GetInfoInput {
+                triple: triple.clone(),
                 name: package.clone(),
             };
 
