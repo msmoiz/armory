@@ -182,8 +182,8 @@ async fn publish(
         .join("registry")
         .join(format!("{}-{}", input.name, input.version));
 
-    if let Some(existing) = fs::read_to_string(&artifact_path).ok() {
-        let existing_hash = Sha256::digest(existing.as_bytes());
+    if let Some(existing) = fs::read(&artifact_path).ok() {
+        let existing_hash = Sha256::digest(existing);
         let incoming_hash = Sha256::digest(&content);
         if incoming_hash != existing_hash {
             return Err(Error(PublishError::VersionExists));
