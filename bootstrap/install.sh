@@ -41,7 +41,7 @@ info() {
 }
 
 architecture() {
-    arch
+    uname -m
 }
 
 operating_system() {
