@@ -60,6 +60,8 @@ pub struct PublishOutput {}
 pub enum PublishError {
     #[error("content is not encoded correctly")]
     InvalidEncoding,
+    #[error("version already exists")]
+    VersionExists,
     #[error("internal error")]
     InternalError,
 }
@@ -68,6 +70,7 @@ impl From<PublishError> for ErrorInfo {
     fn from(value: PublishError) -> Self {
         let code = match value {
             PublishError::InvalidEncoding => "invalid_encoding",
+            PublishError::VersionExists => "version_exists",
             PublishError::InternalError => "internal_error",
         };
 
@@ -84,6 +87,7 @@ impl TryFrom<ErrorInfo> for PublishError {
         let code = value.code.as_ref();
         match code {
             "invalid_encoding" => Ok(Self::InvalidEncoding),
+            "version_exists" => Ok(Self::VersionExists),
             "internal_error" => Ok(Self::InternalError),
             _ => bail!("unrecognized error code: {code}"),
         }

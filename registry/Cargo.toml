@@ -10,6 +10,7 @@ base64.workspace = true
 dirs.workspace = true
 model = { path = "../model" }
 serde.workspace = true
+sha2 = "0.10.8"
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber = "0.3.18"

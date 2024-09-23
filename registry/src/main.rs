@@ -21,6 +21,7 @@ use model::{
     GetOutput, ListError, ListInput, ListOutput, PublishError, PublishInput, PublishOutput,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 use tracing_subscriber::fmt;
 
@@ -180,6 +181,14 @@ async fn publish(
         .armory_home
         .join("registry")
         .join(format!("{}-{}", input.name, input.version));
+
+    if let Some(existing) = fs::read_to_string(&artifact_path).ok() {
+        let existing_hash = Sha256::digest(existing.as_bytes());
+        let incoming_hash = Sha256::digest(&content);
+        if incoming_hash != existing_hash {
+            return Err(Error(PublishError::VersionExists));
+        }
+    }
 
     if let Err(e) = fs::write(&artifact_path, content)
         .with_context(|| format!("failed to write artifact to {}", artifact_path.display()))
