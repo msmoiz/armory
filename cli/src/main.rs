@@ -340,7 +340,16 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
     let artifact_path = bin.join(&format!("{}.exe", output.name));
 
     if artifact_path.exists() {
+        #[cfg(unix)]
         fs::remove_file(&artifact_path).context("failed to remove existing package")?;
+
+        #[cfg(windows)]
+        fs::rename(
+            &artifact_path,
+            artifact_path.with_file_name(&format!("old_{}", output.name)),
+        )
+        .context("failed to remove existing package")?;
+
         info!("deleted existing binary at {}", artifact_path.display());
     }
 
