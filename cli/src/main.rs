@@ -5,8 +5,7 @@ mod target;
 
 use std::{
     collections::HashMap,
-    fs::{self, Permissions},
-    os::unix::fs::PermissionsExt,
+    fs::{self},
     str::FromStr,
 };
 
@@ -333,14 +332,26 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     let bin = armory_home.join("bin");
     fs::create_dir_all(&bin).context("failed to create bin directory")?;
+
+    #[cfg(unix)]
     let artifact_path = bin.join(&format!("{}", output.name));
+
+    #[cfg(windows)]
+    let artifact_path = bin.join(&format!("{}.exe", output.name));
+
     if artifact_path.exists() {
         fs::remove_file(&artifact_path).context("failed to remove existing package")?;
         info!("deleted existing binary at {}", artifact_path.display());
     }
+
     fs::write(&artifact_path, &content).context("failed to store package in bin")?;
-    fs::set_permissions(&artifact_path, Permissions::from_mode(0o700))
-        .context("failed to set binary permissions")?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&artifact_path, fs::Permissions::from_mode(0o700))
+            .context("failed to set binary permissions")?;
+    }
 
     info!("installed binary to {}", artifact_path.display());
 
@@ -418,7 +429,11 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
 
     let bin = armory_home.join("bin");
 
+    #[cfg(unix)]
     let artifact_path = bin.join(&name);
+
+    #[cfg(windows)]
+    let artifact_path = bin.join(&format!("{}.exe", name));
 
     if !artifact_path.is_file() {
         error!("package '{name}' does not exist");
