@@ -21,14 +21,12 @@ use model::{
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
-use tracing_subscriber::fmt;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .event_format(fmt::format().compact())
-        .init();
+    tracing_subscriber::fmt::init();
 
     info!("starting server");
 
@@ -53,7 +51,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/list", post(list))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, authentication))
-        .layer(DefaultBodyLimit::max(1024 * 1024 * 100));
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 100))
+        .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
 
