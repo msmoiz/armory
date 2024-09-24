@@ -55,7 +55,7 @@ enum Command {
         /// If there is only one target defined in the package manifest, this
         /// flag does not need to be specified. If there is more than target
         /// defined, this flag must be specified to select one.
-        #[arg(value_name = "TARGET")]
+        #[arg(long, value_name = "TARGET")]
         triple: Option<Triple>,
     },
     /// Install a package.
