@@ -415,9 +415,8 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
 
 /// Uninstall a package.
 fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
-    let armory_home = dirs::home_dir()
-        .expect("home directory should exist")
-        .join(".armory");
+    let home = dirs::home_dir().expect("home directory should exist");
+    let armory_home = home.join(".armory");
 
     if name == "self" || name == "armory" {
         let confirm = if interactive {
@@ -430,6 +429,16 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
             info!("uninstall aborted");
             return Ok(());
         }
+
+        // cannot delete armory home with active binary in it on windows so we
+        // move it to the home directory and leave it for manual cleanup. there
+        // is probably a better way to do this
+        #[cfg(windows)]
+        fs::rename(
+            armory_home.join("bin/armory.exe"),
+            home.join(".armory.discard"),
+        )
+        .context("unable to rename armory bin")?;
 
         fs::remove_dir_all(armory_home).context("failed to delete armory home")?;
         info!("uninstalled armory");
