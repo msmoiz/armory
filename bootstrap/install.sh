@@ -41,7 +41,14 @@ info() {
 }
 
 architecture() {
-    uname -m
+    case $(uname -m) in
+    arm64)
+        echo "aarch64"
+        ;;
+    *)
+        uname -m
+        ;;
+    esac
 }
 
 operating_system() {
