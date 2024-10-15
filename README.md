@@ -22,9 +22,9 @@ This will install the appropriate binary for the target platform. Armory data
 and configuration lives in the `${HOME}/.armory` directory. To complete
 installation:
 
-1. Add Armory to your PATH (e.g., `export PATH="${PATH}:${HOME}/.armory/bin").
-2. Log in to the registry: `armory login`. Registry credentials can be found on
-   the server that hosts the registry.
+1. Add the Armory binary directory (_${HOME}/.armory/bin_) to your PATH.
+2. Log in to the Armory registry using `armory login`. Registry credentials can
+   be found on the server that hosts the registry.
 
 ## Supported platforms
 
