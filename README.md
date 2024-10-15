@@ -34,3 +34,49 @@ aarch64 architectures for these operating systems.
 ## Registry
 
 The registry is hosted at <https://armory.msmoiz.com>.
+
+## Publishing packages
+
+A package represents a single binary or executable. It does not include manual
+pages, autocompletions, libraries, config files, or other peripheral artifacts
+related to the application.
+
+To publish a package, use the `armory publish` command. This command reads an
+_armory.toml_ file in the current directory to determine the name and other
+metadata needed to describe the package. It should contain the the following
+fields.
+
+### `[package]`
+
+General package information.
+
+#### `name`
+
+The name of the package.
+
+#### `version`
+
+The version of the package.
+
+### `[[targets]]`
+
+Information about a specific target. There should be one `targets` section for
+each platform that your tool supports.
+
+#### `triple`
+
+The target triple that this target corresponds to.
+
+#### `path`
+
+### Example
+
+```toml
+[package]
+name = "armory"
+version = "0.2.2"
+
+[[targets]]
+triple = "x86_64_linux"
+path = "target/x86_64-unknown-linux-musl/release/armory"
+```
