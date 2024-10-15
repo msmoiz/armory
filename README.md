@@ -43,8 +43,7 @@ related to the application.
 
 To publish a package, use the `armory publish` command. This command reads an
 _armory.toml_ file in the current directory to determine the name and other
-metadata needed to describe the package. It should contain the the following
-fields.
+metadata needed to describe the package. It should contain the following fields.
 
 ### `[package]`
 
