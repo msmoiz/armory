@@ -341,5 +341,7 @@ async fn list(
         packages.push(name);
     }
 
+    packages.sort();
+
     Ok(Output(ListOutput { packages }))
 }
