@@ -1,4 +1,6 @@
+mod cache;
 mod client;
+mod dirs;
 mod install_manifest;
 mod package_manifest;
 mod target;
@@ -199,11 +201,7 @@ struct Config {
 impl Config {
     /// Loads config from the environment.
     fn load() -> anyhow::Result<Self> {
-        let armory_home = dirs::home_dir()
-            .expect("home directory should exist")
-            .join(".armory");
-
-        let config_file = armory_home.join("config.toml");
+        let config_file = dirs::armory_home().join("config.toml");
 
         let password = if config_file.exists() {
             let content = fs::read_to_string(config_file).context("failed to read config file")?;
@@ -237,7 +235,7 @@ fn publish(config: Config, triple: Option<Triple>) -> anyhow::Result<()> {
         PackageManifest::load().context("failed to load package manifest")?;
 
     let target = match (targets.len(), triple) {
-        (0, _) => bail!("there are not targets defined"),
+        (0, _) => bail!("there are no targets defined"),
         (1, _) => &targets[0],
         (_, None) => bail!(
             "no target selected; options: {:?}",
@@ -297,47 +295,72 @@ fn publish(config: Config, triple: Option<Triple>) -> anyhow::Result<()> {
 fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::Result<()> {
     let name = id.name;
 
+    let triple = target::triple()?;
+
     if id.version.is_some() && version.is_some() {
         error!("version specified multiple times");
         return Ok(());
     }
 
-    let version = id.version.or(version);
+    let client = Client::new(config.registry_url, config.password);
 
-    let triple = target::triple()?;
+    let version = match id.version.or(version) {
+        Some(version) => version,
+        None => {
+            let input = GetInfoInput {
+                name: name.clone(),
+                triple: triple.clone(),
+            };
 
-    let input = GetInput {
-        name,
-        version,
-        triple,
+            let mut package_info = client
+                .get_info(input)
+                .context("'get_info' request failed")?;
+
+            package_info
+                .versions
+                .pop()
+                .expect("at least one version should exist")
+        }
     };
 
-    let client = Client::new(config.registry_url, config.password);
-    let output = client.get(input).context("'get' request failed")?;
+    let content = match cache::get(&name, &version).context("failed to read cache")? {
+        // Use cached data if available
+        Some(cached) => {
+            info!("found package in cache");
+            cached
+        }
 
-    let content = BASE64_STANDARD
-        .decode(output.content)
-        .context("package content is malformed")?;
+        // Otherwise fetch from registry
+        None => {
+            let input = GetInput {
+                name: name.clone(),
+                version: Some(version.clone()),
+                triple,
+            };
 
-    let armory_home = dirs::home_dir()
-        .expect("home directory should exist")
-        .join(".armory");
+            let output = client.get(input).context("'get' request failed")?;
 
-    let registry = armory_home.join("registry");
-    fs::create_dir_all(&registry).context("failed to create registry directory")?;
-    let artifact_path = registry.join(&format!("{}-{}", output.name, output.version));
-    fs::write(&artifact_path, &content).context("failed to store package in registry")?;
+            let content = BASE64_STANDARD
+                .decode(output.content)
+                .context("package content is malformed")?;
 
-    info!("installed package to {}", artifact_path.display());
+            let cache_path = cache::put(&output.name, &output.version, &content)
+                .context("failed to cache package")?;
 
-    let bin = armory_home.join("bin");
+            info!("cached package at {}", cache_path.display());
+
+            content
+        }
+    };
+
+    let bin = dirs::armory_home().join("bin");
     fs::create_dir_all(&bin).context("failed to create bin directory")?;
 
     #[cfg(unix)]
-    let artifact_path = bin.join(&format!("{}", output.name));
+    let artifact_path = bin.join(&format!("{}", name));
 
     #[cfg(windows)]
-    let artifact_path = bin.join(&format!("{}.exe", output.name));
+    let artifact_path = bin.join(&format!("{}.exe", name));
 
     if artifact_path.exists() {
         #[cfg(unix)]
@@ -346,7 +369,7 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
         #[cfg(windows)]
         fs::rename(
             &artifact_path,
-            artifact_path.with_file_name(&format!("old_{}", output.name)),
+            artifact_path.with_file_name(&format!("old_{}", name)),
         )
         .context("failed to remove existing package")?;
 
@@ -366,7 +389,7 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
 
     InstallManifest::load_or_create()
         .and_then(|mut manifest| {
-            manifest.add_package(output.name, output.version);
+            manifest.add_package(name, version);
             manifest.save()
         })
         .context("failed to update manifest")?;
@@ -415,8 +438,7 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
 
 /// Uninstall a package.
 fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
-    let home = dirs::home_dir().expect("home directory should exist");
-    let armory_home = home.join(".armory");
+    let armory_home = dirs::armory_home();
 
     if name == "self" || name == "armory" {
         let confirm = if interactive {
@@ -434,11 +456,14 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
         // move it to the home directory and leave it for manual cleanup. there
         // is probably a better way to do this
         #[cfg(windows)]
-        fs::rename(
-            armory_home.join("bin/armory.exe"),
-            home.join(".armory.discard"),
-        )
-        .context("unable to rename armory bin")?;
+        {
+            let home = ::dirs::home_dir().expect("home directory should exist");
+            fs::rename(
+                armory_home.join("bin/armory.exe"),
+                home.join(".armory.discard"),
+            )
+            .context("unable to rename armory bin")?;
+        }
 
         fs::remove_dir_all(armory_home).context("failed to delete armory home")?;
         info!("uninstalled armory");
@@ -475,11 +500,7 @@ fn uninstall(name: String, interactive: bool) -> anyhow::Result<()> {
 
 /// Set up registry credentials.
 fn login() -> anyhow::Result<()> {
-    let armory_home = dirs::home_dir()
-        .expect("home directory should exist")
-        .join(".armory");
-
-    let config_file = armory_home.join("config.toml");
+    let config_file = dirs::armory_home().join("config.toml");
 
     let password = Password::new()
         .with_prompt("enter your password")
