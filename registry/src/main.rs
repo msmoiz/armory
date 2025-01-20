@@ -284,10 +284,12 @@ async fn get_info(
         }
     };
 
-    let versions = entries
+    let mut versions = entries
         .filter_map(Result::ok)
         .map(|e| e.file_name().to_string_lossy().to_string())
         .collect::<Vec<_>>();
+
+    versions.sort();
 
     if versions.is_empty() {
         return Err(Error(GetInfoError::PackageNotFound));
