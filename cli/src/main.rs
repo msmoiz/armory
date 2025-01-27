@@ -419,14 +419,13 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
                 name: package.clone(),
             };
 
-            let package = client
+            let mut package = client
                 .get_info(get_info_input)
                 .with_context(|| format!("failed to fetch info for package {package}"))?;
 
             let latest_version = package
                 .versions
-                .iter()
-                .max()
+                .pop()
                 .expect("should be at least one version");
 
             println!("    {0: <20} {1: <10}", package.name, latest_version)
