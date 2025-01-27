@@ -25,13 +25,19 @@ build:
 [linux]
 publish: build
     armory publish --triple x86_64_linux
+    scp target/x86_64-unknown-linux-musl/release/armory \
+        msmoiz.com:/home/msmoiz/armory/download/armory-x86_64-linux
 
 # Publishes the CLI to the Armory registry.
 [macos]
 publish: build
     armory publish --triple aarch64_darwin
+    scp target/aarch64-apple-darwin/release/armory \
+        armory:/home/msmoiz/armory/download/armory-aarch64-darwin
 
 # Publishes the CLI to the Armory registry.
 [windows]
 publish: build
     armory publish --triple x86_64_windows
+    scp target\x86_64-pc-windows-msvc\release\armory.exe \
+        msmoiz.com:/home/msmoiz/armory/download/armory-x86_64-windows
