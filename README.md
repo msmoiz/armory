@@ -23,8 +23,9 @@ and configuration lives in the `${HOME}/.armory` directory. To complete
 installation:
 
 1. Add the Armory binary directory (_${HOME}/.armory/bin_) to your PATH.
-2. Log in to the Armory registry using `armory login`. Registry credentials can
-   be found on the server that hosts the registry.
+2. Log in to the Armory registry using `armory login` (or set the
+   `ARMORY_PASSWORD` environment variable in your shell). Registry credentials
+   can be found on the server that hosts the registry.
 
 ## Supported platforms
 
