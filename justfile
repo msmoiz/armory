@@ -39,5 +39,5 @@ publish: build
 [windows]
 publish: build
     armory publish --triple x86_64_windows
-    scp target\x86_64-pc-windows-msvc\release\armory.exe \
+    scp target/x86_64-pc-windows-msvc/release/armory.exe \
         msmoiz.com:/home/msmoiz/armory/download/armory-x86_64-windows
