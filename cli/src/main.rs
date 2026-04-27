@@ -1,5 +1,6 @@
 mod cache;
 mod client;
+mod config;
 mod dirs;
 mod install_manifest;
 mod package_manifest;
@@ -13,7 +14,7 @@ use std::{
 
 use anyhow::{bail, Context};
 use base64::{prelude::BASE64_STANDARD, Engine};
-use clap::{command, ArgAction, CommandFactory, Parser, Subcommand};
+use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use client::Client;
 use colored::{Color, Colorize};
 use dialoguer::{Confirm, Password};
@@ -22,8 +23,9 @@ use install_manifest::InstallManifest;
 use log::{error, info};
 use model::{GetInfoInput, GetInput, ListInput, PublishInput, Triple};
 use package_manifest::PackageManifest;
-use serde::Deserialize;
 use std::io::Write;
+
+use crate::config::Config;
 
 /// A personal package manager.
 #[derive(Parser, Debug)]
@@ -181,52 +183,6 @@ fn init_logger() {
         .format(format)
         .filter_level(log::LevelFilter::Info)
         .init();
-}
-
-/// Application config file.
-#[derive(Deserialize)]
-struct ConfigFile {
-    /// The password to use for authentication.
-    password: String,
-}
-
-/// Application config.
-struct Config {
-    /// The URL of the registry.
-    registry_url: String,
-    /// The password to use for authentication.
-    password: Option<String>,
-}
-
-impl Config {
-    /// Loads config from the environment.
-    fn load() -> anyhow::Result<Self> {
-        let config_file = dirs::armory_home().join("config.toml");
-
-        let password = if config_file.exists() {
-            let content = fs::read_to_string(config_file).context("failed to read config file")?;
-            let config: ConfigFile =
-                toml::from_str(&content).context("failed to parse config file")?;
-            Some(config.password)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            #[cfg(debug_assertions)]
-            registry_url: String::from("http://localhost:3000"),
-            #[cfg(not(debug_assertions))]
-            registry_url: String::from("https://armory.msmoiz.com"),
-            password,
-        })
-    }
-}
-
-pub mod header {
-    /// Indicates the success or failure of an operation.
-    ///
-    /// Should be set to `true` or `false`.
-    pub const OK: &'static str = "x-ok";
 }
 
 /// Publish a package.
