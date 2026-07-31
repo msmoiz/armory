@@ -1,6 +1,10 @@
 [workspace]
-members = ["cli", "model", "registry"]
 resolver = "2"
+members = [
+    "packages/cli",
+    "packages/model",
+    "packages/registry"
+]
 
 [workspace.package]
 edition = "2021"

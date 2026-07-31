@@ -75,6 +75,8 @@ enum Command {
         #[arg(long)]
         version: Option<String>,
     },
+    /// Installs the latest version of all installed packages.
+    Upgrade,
     /// List available packages.
     ///
     /// This only shows packages that are available for the current platform.
@@ -145,6 +147,7 @@ fn main() {
         Command::Publish { triple } => publish(config, triple),
         Command::Install { id, version } => install(id, version, config),
         Command::List { installed } => list(config, installed),
+        Command::Upgrade => upgrade(config),
         Command::Uninstall { name, interactive } => uninstall(name, interactive),
         Command::Login => login(),
     };
@@ -349,6 +352,36 @@ fn install(id: Identifier, version: Option<String>, config: Config) -> anyhow::R
             manifest.save()
         })
         .context("failed to update manifest")?;
+
+    Ok(())
+}
+
+/// Installs the latest version of all installed packages.
+fn upgrade(config: Config) -> anyhow::Result<()> {
+    let manifest = InstallManifest::load_or_create().context("failed to load manifest")?;
+
+    let client = Client::new(config.registry_url, config.password);
+    let triple = target::triple()?;
+    for package in manifest.packages() {
+        let get_info_input = GetInfoInput {
+            triple: triple.clone(),
+            name: package.name.clone(),
+        };
+
+        let mut package = client
+            .get_info(get_info_input)
+            .with_context(|| format!("failed to fetch info for package {}", package.name))?;
+
+        let latest_version = package
+            .versions
+            .pop()
+            .expect("should be at least one version");
+
+        // @todo: compare versions
+        // if latest_version
+
+        // @todo: if it is greater than current, install it
+    }
 
     Ok(())
 }
