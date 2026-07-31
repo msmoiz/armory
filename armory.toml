@@ -1,6 +1,6 @@
 [package]
 name = "armory"
-version = "1.0.1"
+version = "1.1.0"
 
 [[targets]]
 triple = "x86_64_linux"
