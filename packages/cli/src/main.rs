@@ -7,6 +7,7 @@ mod package_manifest;
 mod target;
 
 use std::{
+    cmp::Ordering,
     collections::HashMap,
     fs::{self},
     str::FromStr,
@@ -24,6 +25,7 @@ use log::{error, info};
 use model::{GetInfoInput, GetInput, ListInput, PublishInput, Triple};
 use package_manifest::PackageManifest;
 use std::io::Write;
+use utils::sort_versions;
 
 use crate::config::Config;
 
@@ -363,6 +365,8 @@ fn upgrade(config: Config) -> anyhow::Result<()> {
     let client = Client::new(config.registry_url, config.password);
     let triple = target::triple()?;
     for package in manifest.packages() {
+        let current_version = package.version.clone();
+
         let get_info_input = GetInfoInput {
             triple: triple.clone(),
             name: package.name.clone(),
@@ -377,10 +381,93 @@ fn upgrade(config: Config) -> anyhow::Result<()> {
             .pop()
             .expect("should be at least one version");
 
-        // @todo: compare versions
-        // if latest_version
+        // If the latest version is already installed, skip reinstall
+        if matches!(
+            sort_versions(&current_version, &latest_version),
+            Ordering::Equal | Ordering::Greater
+        ) {
+            info!("package up to date: {} ({})", package.name, latest_version);
+            continue;
+        }
 
-        // @todo: if it is greater than current, install it
+        info!(
+            "upgrading package: {} ({} -> {})",
+            package.name, current_version, latest_version
+        );
+
+        // Otherwise, install the latest version
+        let name = package.name;
+        let version = latest_version;
+        let content = match cache::get(&name, &version).context("failed to read cache")? {
+            // Use cached data if available
+            Some(cached) => {
+                info!("found package in cache");
+                cached
+            }
+
+            // Otherwise fetch from registry
+            None => {
+                let input = GetInput {
+                    name: name.clone(),
+                    version: Some(version.clone()),
+                    triple: triple.clone(),
+                };
+
+                let output = client.get(input).context("'get' request failed")?;
+
+                let content = BASE64_STANDARD
+                    .decode(output.content)
+                    .context("package content is malformed")?;
+
+                let cache_path = cache::put(&output.name, &output.version, &content)
+                    .context("failed to cache package")?;
+
+                info!("cached package at {}", cache_path.display());
+
+                content
+            }
+        };
+
+        let bin = dirs::armory_home().join("bin");
+        fs::create_dir_all(&bin).context("failed to create bin directory")?;
+
+        #[cfg(unix)]
+        let artifact_path = bin.join(&format!("{}", name));
+
+        #[cfg(windows)]
+        let artifact_path = bin.join(&format!("{}.exe", name));
+
+        if artifact_path.exists() {
+            #[cfg(unix)]
+            fs::remove_file(&artifact_path).context("failed to remove existing package")?;
+
+            #[cfg(windows)]
+            fs::rename(
+                &artifact_path,
+                artifact_path.with_file_name(&format!("old_{}", name)),
+            )
+            .context("failed to remove existing package")?;
+
+            info!("deleted existing binary at {}", artifact_path.display());
+        }
+
+        fs::write(&artifact_path, &content).context("failed to store package in bin")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&artifact_path, fs::Permissions::from_mode(0o700))
+                .context("failed to set binary permissions")?;
+        }
+
+        info!("installed binary to {}", artifact_path.display());
+
+        InstallManifest::load_or_create()
+            .and_then(|mut manifest| {
+                manifest.add_package(name, version);
+                manifest.save()
+            })
+            .context("failed to update manifest")?;
     }
 
     Ok(())

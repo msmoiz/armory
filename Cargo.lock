@@ -99,6 +99,7 @@ dependencies = [
  "serde",
  "thiserror",
  "toml 0.8.19",
+ "utils",
 ]
 
 [[package]]
