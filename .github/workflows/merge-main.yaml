@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     tags:
-      - '*'
+      - "*"
 
 jobs:
   build-test-publish:
@@ -71,12 +71,18 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
+      # host key is pinned here rather than fetched with ssh-keyscan because
+      # keyscan on the Windows runner's bundled OpenSSH client cannot negotiate
+      # the sntrup761x25519-sha512 KEX msmoiz.com offers and fails
       - name: Configure SSH (deploy host + alias)
         if: steps.check-tag.outputs.has_tag == 'true' && runner.os != 'Windows'
         shell: bash
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H msmoiz.com >> ~/.ssh/known_hosts
+          cat >> ~/.ssh/known_hosts <<'EOF'
+          msmoiz.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFs/hSA6uHaT18qI9mFsyyiXCIDyZx9OiYToh+84VIFQ
+          msmoiz.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGTfoRsByYOUCA0r+2eNOjegtoTiBcYM3Gpclh9AMPrU+ndYE64AB6wfnRrxMlY1kMyaPoP0eu6xzR41Y6Eb6hM=
+          EOF
           cat >> ~/.ssh/config <<EOF
           Host msmoiz.com armory
             HostName msmoiz.com
@@ -88,7 +94,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
-          ssh-keyscan -H msmoiz.com | Out-File -Append -Encoding ascii "$env:USERPROFILE\.ssh\known_hosts"
+          @"
+          msmoiz.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFs/hSA6uHaT18qI9mFsyyiXCIDyZx9OiYToh+84VIFQ
+          msmoiz.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGTfoRsByYOUCA0r+2eNOjegtoTiBcYM3Gpclh9AMPrU+ndYE64AB6wfnRrxMlY1kMyaPoP0eu6xzR41Y6Eb6hM=
+          "@ | Out-File -Append -Encoding ascii "$env:USERPROFILE\.ssh\known_hosts"
           @"
           Host msmoiz.com armory
             HostName msmoiz.com
