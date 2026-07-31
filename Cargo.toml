@@ -3,7 +3,8 @@ resolver = "2"
 members = [
     "packages/cli",
     "packages/model",
-    "packages/registry"
+    "packages/registry",
+    "packages/utils"
 ]
 
 [workspace.package]
