@@ -6,6 +6,10 @@ default:
 develop:
     cargo run --bin armory-registry
 
+# Runs tests for the workspace.
+test:
+    cargo test
+
 # Builds release artifacts.
 [linux]
 build:
