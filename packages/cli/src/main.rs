@@ -488,7 +488,7 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
         };
         let client = Client::new(config.registry_url, config.password);
         let output = client.list(input).context("'list' request failed")?;
-        println!("available packages:");
+        let mut buffer = String::new();
         for package in output.packages {
             let get_info_input = GetInfoInput {
                 triple: triple.clone(),
@@ -504,8 +504,11 @@ fn list(config: Config, installed: bool) -> anyhow::Result<()> {
                 .pop()
                 .expect("should be at least one version");
 
-            println!("    {0: <20} {1: <10}", package.name, latest_version)
+            buffer += &format!("    {0: <20} {1: <10}\n", package.name, latest_version);
         }
+
+        println!("available packages:");
+        print!("{buffer}");
     }
 
     Ok(())
